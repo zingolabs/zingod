@@ -23,7 +23,7 @@ async fn reorg_storm_during_catch_up_converges_on_the_validators_chain() -> Resu
     let mut env = TestEnv::builder().ready_timeout(READY);
     let validator = env.add_validator(Validator::zebrad("6.2.3").regtest().mine_to(Pool::Orchard));
     let indexer =
-        env.add_indexer(dev!(Indexer::Zainod, "../../Dockerfile").regtest().finalised_depth(DEPTH));
+        env.add_indexer(dev!(Indexer::Zingod, "../../Dockerfile").regtest().finalised_depth(DEPTH));
     env.build().await?;
 
     let (warm, _) = validator.tip().await?;
@@ -48,7 +48,7 @@ async fn reorg_storm_during_catch_up_converges_on_the_validators_chain() -> Resu
         assert_eq!(
             Some(hash.to_string().as_str()),
             truth.as_str(),
-            "{height} hash: zaino vs zebrad"
+            "{height} hash: zingod vs zebrad"
         );
     }
     for pair in served.windows(2) {
@@ -58,16 +58,16 @@ async fn reorg_storm_during_catch_up_converges_on_the_validators_chain() -> Resu
 
     let empty = |tree: &str| if tree.is_empty() { "000000".to_owned() } else { tree.to_owned() };
     for height in lowest_fork_parent..=tip {
-        let zaino = indexer.get_tree_state(height.into()).await?;
+        let zingod = indexer.get_tree_state(height.into()).await?;
         let zebra = vrpc.call_value("z_gettreestate", json!([height.to_string()])).await?;
         let final_state = |pool: &str| {
             empty(zebra[pool]["commitments"]["finalState"].as_str().unwrap_or_default())
         };
         let served = [
-            zaino.hash.clone(),
-            empty(&zaino.sapling_tree),
-            empty(&zaino.orchard_tree),
-            empty(&zaino.ironwood_tree),
+            zingod.hash.clone(),
+            empty(&zingod.sapling_tree),
+            empty(&zingod.orchard_tree),
+            empty(&zingod.ironwood_tree),
         ];
         let truth = [
             zebra["hash"].as_str().unwrap_or_default().to_owned(),
@@ -77,13 +77,13 @@ async fn reorg_storm_during_catch_up_converges_on_the_validators_chain() -> Resu
         ];
         assert_eq!(
             served, truth,
-            "[hash, sapling, orchard, ironwood] at {height}: zaino vs zebrad"
+            "[hash, sapling, orchard, ironwood] at {height}: zingod vs zebrad"
         );
     }
-    for index in ZainoIndex::ALL {
+    for index in ZingodIndex::ALL {
         assert_eq!(indexer.synced(index).await?, Some(true), "{index:?} serving after the storm");
     }
     let after = indexer.pod().await?.sample().await?;
-    assert_eq!(after.restarts, restarts, "zainod rode out the storm without a restart");
+    assert_eq!(after.restarts, restarts, "zingod rode out the storm without a restart");
     Ok(())
 }

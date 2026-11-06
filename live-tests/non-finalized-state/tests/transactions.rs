@@ -33,7 +33,7 @@ async fn orphaned_transaction_leaves_every_index_and_returns_where_remined(
     let mut env = TestEnv::builder().ready_timeout(READY);
     let validator = env.add_validator(Validator::zebrad("6.2.3").regtest().mine_to(Pool::Orchard));
     let indexer =
-        env.add_indexer(dev!(Indexer::Zainod, "../../Dockerfile").regtest().finalised_depth(DEPTH));
+        env.add_indexer(dev!(Indexer::Zingod, "../../Dockerfile").regtest().finalised_depth(DEPTH));
     let wallet = env.add_wallet(Wallet::librustzcash());
     env.build().await?;
 
@@ -57,7 +57,7 @@ async fn orphaned_transaction_leaves_every_index_and_returns_where_remined(
         assert_eq!(
             Some(balance),
             truth["balance"].as_i64(),
-            "balance at tip {tip}: zaino vs zebrad"
+            "balance at tip {tip}: zingod vs zebrad"
         );
 
         let mut utxos: Vec<(String, u32, i64, u64)> = indexer
@@ -93,7 +93,7 @@ async fn orphaned_transaction_leaves_every_index_and_returns_where_remined(
         utxo_truth.sort();
         assert_eq!(
             utxos, utxo_truth,
-            "UTXOs (txid, index, value, height) at {tip}: zaino vs zebrad"
+            "UTXOs (txid, index, value, height) at {tip}: zingod vs zebrad"
         );
 
         let range = json!([{ "addresses": [&taddr], "start": 1, "end": tip }]);
@@ -123,7 +123,7 @@ async fn orphaned_transaction_leaves_every_index_and_returns_where_remined(
             zebrad_txs.into_iter().map(|(_, id, height)| (id, height)).collect();
         txids.sort();
         tx_truth.sort();
-        assert_eq!(txids, tx_truth, "address txs (txid, height) in [1, {tip}]: zaino vs zebrad");
+        assert_eq!(txids, tx_truth, "address txs (txid, height) in [1, {tip}]: zingod vs zebrad");
         Ok((balance, utxos.iter().map(|u| u.3).collect(), txids))
     };
 
@@ -184,7 +184,7 @@ async fn orphaned_transaction_leaves_every_index_and_returns_where_remined(
             }
             ensure!(
                 started.elapsed() < CONVERGE,
-                "mempool zaino {served:?} never matched zebrad {truth:?} in {CONVERGE:?}"
+                "mempool zingod {served:?} never matched zebrad {truth:?} in {CONVERGE:?}"
             );
             tokio::time::sleep(MEMPOOL_POLL).await;
         }
@@ -212,7 +212,7 @@ async fn orphaned_transaction_leaves_every_index_and_returns_where_remined(
 
     let (landed, expected) = if rebroadcast {
         let sent = indexer.send_transaction(&raw).await?;
-        assert_eq!(sent.error_code, 0, "rebroadcast via zaino: {}", sent.error_message);
+        assert_eq!(sent.error_code, 0, "rebroadcast via zingod: {}", sent.error_message);
         let started = tokio::time::Instant::now();
         while !vrpc
             .call_value("getrawmempool", json!([]))

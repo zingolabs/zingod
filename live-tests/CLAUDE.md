@@ -27,7 +27,7 @@ lines and informative.
 ```rust
 let mut env = TestEnv::builder().ready_timeout(READY);
 let validator = env.add_validator(Validator::zebrad("6.2.3").regtest());
-let indexer = env.add_indexer(dev!(Indexer::Zainod, "../../Dockerfile").regtest());
+let indexer = env.add_indexer(dev!(Indexer::Zingod, "../../Dockerfile").regtest());
 env.build().await?;
 ```
 
@@ -44,7 +44,7 @@ The reader has only the failure output. Write every check for that reader.
 - Every assert carries a message with its operands and keys (height, txid, pool, round).
   No bare `assert!(bool)`, `is_ok()`, `is_err()`, `all(..)`: collect the offenders and
   print them.
-- Parity messages label both sides: `"{height} hash: zaino vs zebrad"`.
+- Parity messages label both sides: `"{height} hash: zingod vs zebrad"`.
 - Collection parity asserts a non-empty premise on the validator side, or the name says
   empty is the expected answer (`no_subtree_roots_served_before_any_subtree_completes`).
 - Big values compare per element with the key in the message, through
@@ -83,13 +83,13 @@ reservation; getting it wrong OOM-kills pods and reads as flake.
 
 | Tier          | Use                                                                        |
 | ------------- | -------------------------------------------------------------------------- |
-| `integration` | Validator + zainod, no wallet (ztest's default).                           |
+| `integration` | Validator + zingod, no wallet (ztest's default).                           |
 | `wallet`      | Any `env.add_wallet`: the in-process wallet runs in the test runner.       |
 | `testnet`     | Snapshot-restored public chains.                                           |
 | `sync`        | Long-running sync subjects (NVMe pool, `footprint` required).              |
 
 Reserves and caps are ztest's (`QosClass::profile`, its `docs/design-qos.md`). A topology
-other than validator + zainod declares a `footprint` rather than switching tier.
+other than validator + zingod declares a `footprint` rather than switching tier.
 
 ## Runtime attributes
 

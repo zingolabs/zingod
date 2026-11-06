@@ -53,7 +53,7 @@ an empty `TreeState.{orchard,ironwood}_tree` to an empty commitment tree with no
 `pepper-sync/src/witness.rs`), indistinguishable from a pre-activation height; `GetSubtreeRoots`
 is swallowed into `Vec::new()` the same way. So Zingod serves each pool from its activation on as
 the real tree (`000000` when empty), and `""` only below activation
-([tree-state guide](../packages/zaino-index-tree-state/usage.md#serving)).
+([tree-state guide](../packages/zingod-index-tree-state/usage.md#serving)).
 
 **The wire format is a `CommitmentTree`, not a frontier.** `TreeState.*_tree` is the hex of
 `zcash_primitives::merkle_tree::write_commitment_tree`; both clients parse it with
@@ -77,7 +77,7 @@ as the end of the chain.
 **pepper-sync refuses a server below protocol v0.5.0.** It rejects any
 `lightwalletProtocolVersion` below `v0.5.0`, an empty one included
 (`check_lightwallet_protocol_version` in `pepper-sync/src/client.rs`). Zingod reports its vendored
-protos' release (`zaino_proto::LIGHTWALLET_PROTOCOL_VERSION`), so a new upstream release moves
+protos' release (`zingod_proto::LIGHTWALLET_PROTOCOL_VERSION`), so a new upstream release moves
 the reported version with it.
 
 ## Transparent: address queries and the private path

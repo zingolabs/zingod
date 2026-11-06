@@ -29,7 +29,7 @@ async fn deepest_legal_reorg_never_rewrites_durable_data() -> Result<()> {
     let mut env = TestEnv::builder().ready_timeout(READY);
     let validator = env.add_validator(Validator::zebrad("6.2.3").regtest().mine_to(Pool::Orchard));
     let indexer =
-        env.add_indexer(dev!(Indexer::Zainod, "../../Dockerfile").regtest().finalised_depth(DEPTH));
+        env.add_indexer(dev!(Indexer::Zingod, "../../Dockerfile").regtest().finalised_depth(DEPTH));
     env.build().await?;
 
     let (warm, _) = validator.tip().await?;
@@ -46,7 +46,7 @@ async fn deepest_legal_reorg_never_rewrites_durable_data() -> Result<()> {
             let mut samples = Vec::new();
             while !stop.load(Ordering::Relaxed) {
                 let mut row = Vec::new();
-                for index in ZainoIndex::ALL {
+                for index in ZingodIndex::ALL {
                     row.push(indexer.finalized_height(index).await.ok().flatten());
                 }
                 samples.push(row);
@@ -64,7 +64,7 @@ async fn deepest_legal_reorg_never_rewrites_durable_data() -> Result<()> {
 
     let sampled = samples.len();
     assert!(sampled > 1, "premise: durable extents sampled through the reorg, got {sampled}");
-    for (i, index) in ZainoIndex::ALL.iter().enumerate() {
+    for (i, index) in ZingodIndex::ALL.iter().enumerate() {
         let trace: Vec<u32> = samples.iter().filter_map(|row| row[i]).collect();
         let regressed = trace.windows(2).find(|pair| pair[1] < pair[0]);
         assert_eq!(regressed, None, "{index:?} durable extent monotone: {trace:?}");
@@ -75,7 +75,7 @@ async fn deepest_legal_reorg_never_rewrites_durable_data() -> Result<()> {
             "{index:?} durable first {first:?} / max {max:?} vs fork parent {fork_parent}",
         );
     }
-    let durable = indexer.finalized_height(ZainoIndex::CompactBlock).await?.unwrap_or(0) as usize;
+    let durable = indexer.finalized_height(ZingodIndex::CompactBlock).await?.unwrap_or(0) as usize;
     let common = durable.min(fork_parent as usize);
     let served =
         indexer.get_block_range_with_pools(1u32.into(), reorg.tip.0, ALL_POOLS.to_vec()).await?;
@@ -101,7 +101,7 @@ async fn reorg_below_the_window_halts_instead_of_serving() -> Result<()> {
     let mut env = TestEnv::builder().ready_timeout(READY);
     let validator = env.add_validator(Validator::zebrad("6.2.3").regtest().mine_to(Pool::Orchard));
     let indexer = env.add_indexer(
-        dev!(Indexer::Zainod, "../../Dockerfile").regtest().finalised_depth(DEPTH).restartable(),
+        dev!(Indexer::Zingod, "../../Dockerfile").regtest().finalised_depth(DEPTH).restartable(),
     );
     env.build().await?;
 

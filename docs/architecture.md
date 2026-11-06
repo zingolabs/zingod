@@ -1,9 +1,9 @@
 # Zingod architecture
 
-How `zainod` turns a Zcash chain into the lightwalletd gRPC service, and why it is built this way.
+How `zingod` turns a Zcash chain into the lightwalletd gRPC service, and why it is built this way.
 Crate APIs live in each crate's `usage.md`, the per-method RPC table in
 [rpc_api.md](./rpc_api.md), storage in the
-[`zaino-persistence` guide](../packages/zaino-persistence/usage.md), operating zainod in
+[`zingod-persistence` guide](../packages/zingod-persistence/usage.md), operating zingod in
 [running.md](./running.md).
 
 ## 1. Who owns what
@@ -18,7 +18,7 @@ index and never falls back to a validator. So:
 - Block, tree-state and transparent-address methods come from an index or not at all. A disabled
   index answers `UNIMPLEMENTED` naming it.
 - `GetTransaction` goes to a validator: raw transaction bytes are consensus data it already stores
-  ([why](../packages/zaino-grpc/usage.md#why-gettransaction-forwards)). With no validator
+  ([why](../packages/zingod-grpc/usage.md#why-gettransaction-forwards)). With no validator
   answering, the txid-location index names the transaction's block, fetched from p2p peers and
   checked against the hash our indexes hold (which does not cover v5 proofs and signatures).
   `GetTaddressTransactions` works the same way: the
@@ -38,7 +38,7 @@ possible, take everything else from as many peers as possible.**
                     │                                          │
                     └──────────────┬───────────────────────────┘
                                    ▼
-                    zaino-traffic  TrafficBalancer      every request: lanes, hedge, blame
+                    zingod-traffic  TrafficBalancer      every request: lanes, hedge, blame
                                    │
        ┌───────────────────────────┼─────────────────────────────────────┐
        ▼                           ▼                                     ▼
@@ -49,11 +49,11 @@ possible, take everything else from as many peers as possible.**
        ├──────────────────┐         │
        ▼                  ▼         │
   FinalizedFollower        Nfs (RAM)    │
-  (zaino-sync)         tip overlay  │
+  (zingod-sync)         tip overlay  │
        │ FinalizedStream     │ NfsPublication
        ▼                     ▼      ▼
-  index writers   ──▶ zaino-grpc-snapshot Publisher ──▶ one Arc<GrpcSnapshot> per request
-  (disk)  durable views                                  → zaino-grpc, /status, /readyz, /metrics
+  index writers   ──▶ zingod-grpc-snapshot Publisher ──▶ one Arc<GrpcSnapshot> per request
+  (disk)  durable views                                  → zingod-grpc, /status, /readyz, /metrics
 ```
 
 Two paths fold blocks, and their windows overlap:
@@ -94,9 +94,9 @@ netgroups (/16 IPv4, /32 IPv6; one operator ≈ one netgroup).
 
 ## 4. The best chain
 
-The **Validated Header tree** (`zaino-header-chain`, memory only) holds every valid branch above the
+The **Validated Header tree** (`zingod-header-chain`, memory only) holds every valid branch above the
 finalized tip; the best tip is the leaf with the most cumulative work. `HeaderSync`
-(`zaino-chainview`) is its only writer and publishes an immutable `HeaderChainSnapshot` on a watch that
+(`zingod-chainview`) is its only writer and publishes an immutable `HeaderChainSnapshot` on a watch that
 the NFS, the finalized path and the `GrpcSnapshot` publisher read.
 
 ```text
@@ -114,12 +114,12 @@ the NFS, the finalized path and the `GrpcSnapshot` publisher read.
 - **Trusted headers** arrive in runs and enter on their parent link and nBits work alone: the
   validator already ran the rules.
 - **Peer headers** (`[p2p]` on, once anchored) run every consensus rule first
-  (`zaino_header_chain::validate`, [the rules](../packages/zaino-header-chain/usage.md#validate-untrusted-fallback)).
+  (`zingod_header_chain::validate`, [the rules](../packages/zingod-header-chain/usage.md#validate-untrusted-fallback)).
   A header from the future is deferred, not blamed; one failing a rule gets its sender blamed.
 - **Bounds.** Side branches are capped in tips and nodes (past either, the lowest-work side leaf
   goes), and only a window of finalized headers is kept
-  ([limits](../packages/zaino-header-chain/usage.md#the-tree-the-best-tip-finality)). `depth` =
-  `[sync] finalised_depth` ([default and floor](./example_configs/zainod.toml)).
+  ([limits](../packages/zingod-header-chain/usage.md#the-tree-the-best-tip-finality)). `depth` =
+  `[sync] finalised_depth` ([default and floor](./example_configs/zingod.toml)).
 
 ### Finality
 
@@ -143,6 +143,42 @@ kept anywhere else.
 - Neither holding: finality waits, the `finality paused` alarm rises (§11), serving continues
   from RAM. A trusted validator's return vouches and finality resumes.
 
+### A reorg, step by step
+
+Peers are first to every reorg: their headers enter on the rules alone, while a trusted validator
+downloads and fully verifies the new branch before it switches, and Zingod learns of that on its
+next poll (§9). Meanwhile the served tip drops to the fork point (§7) and `synced` closes (§8).
+
+```text
+ network          ─── N ──┬── N+1              branch A, Zingod + the validator on it
+                          └── N+1' ── N+2      branch B, more work, wins
+
+ ──────────────────────────────────────────────────────────────────────────────────▶ time
+                   t0     │ L2: validator verifies B │ L3 │   L4: fetch N+1', N+2     │
+                    │     │                          │    │                           │
+ peers ─────────────┤ announce B headers                                              │
+                    │                                                                 │
+ best ─── N+1 ──────┤ N+2  (every header rule: PoW, difficulty, MTP, Equihash)        │
+                    │                                                                 │
+ served ── N+1 ─────┤ N ◀── fork point, vouched: what wallets get ───────────────────▶ N+2
+                    │                                                                 │
+ validator ── N+1 ──┼────────────────────────────▶ N+2                                │
+                    │                              │    │                             │
+ vouched ─── N+1 ───┤ N ◀── last shared block ─────┼────▶ N+2  (poll, or push hint)   │
+```
+
+| latency | what                                                        | bound                     |
+| ------- | ----------------------------------------------------------- | ------------------------- |
+| L1      | peers announce, headers validated, best switches            | milliseconds              |
+| L2      | the validator downloads and verifies the branch, switches   | its verification time     |
+| L3      | Zingod sees the validator's new tip (the vouch)              | one poll; ~0 with the push stream (§9) |
+| L4      | Zingod fetches the branch's blocks by hash and folds them     | block fetch               |
+
+Through the window Zingod serves the fork point, a vouched block behind an unvouched best: a
+currency gap, not a trust gap, and the state rule reads it so
+([running.md: States](./running.md#states)). The `tip unvouched` alarm (§11) carries the
+unvouched best. L2 is the validator's job and no change on Zingod's side removes it.
+
 ## 5. The mempool view
 
 Every transaction the view knows is a **sighting**: its bytes (fetched once, txid recomputed), its
@@ -153,7 +189,7 @@ quorum, or `ours` (accepted from our own submission). One trusted listing is eno
 validator is trusted.
 
 **Peer quorum** (`[p2p]` on). Each live outbound peer is polled for its whole mempool, and each
-listing counts while fresh ([intervals](../packages/zaino-chainview/usage.md#mempool)). A
+listing counts while fresh ([intervals](../packages/zingod-chainview/usage.md#mempool)). A
 transaction is admitted when:
 
 - more than 2/3 of the counted listings hold its exact id (txid + auth digest), from > 5 netgroups;
@@ -213,11 +249,11 @@ unchecked: Ok at the first acceptance (trusted Ok | any trusted listing | peer q
   our IP, so a fresh connection per push would never deliver. With `[p2p]` off every attempt is a
   trusted `sendrawtransaction`.
 - `[submission]` sets `propagation_threshold_secs` and `max_attempts`
-  ([`SubmitPolicy`](../packages/zaino-chainview/usage.md#submission)).
+  ([`SubmitPolicy`](../packages/zingod-chainview/usage.md#submission)).
 
 ## 7. Indexing
 
-### Finalized path (`zaino-sync`)
+### Finalized path (`zingod-sync`)
 
 `FinalizedFollower` streams `lowest durable tip + 1 ..= finalized tip` into one `FinalizedStream<Block>`:
 
@@ -232,7 +268,7 @@ unchecked: Ok at the first acceptance (trusted Ok | any trusted listing | peer q
 - Utxo-set resolves each transaction's fee and feeds compact-block through a `FeeSink`.
 - A writer commits when its buffer fills, after a run ending at the finalized tip, and at shutdown.
 
-### Tip path (`zaino-nfs`)
+### Tip path (`zingod-nfs`)
 
 - **Root** = the lowest durable tip across indexes.
 - The NFS folds only while the header just above the root is held and best is within 2 · depth of
@@ -247,7 +283,7 @@ unchecked: Ok at the first acceptance (trusted Ok | any trusted listing | peer q
 
 ## 8. Serving: one `GrpcSnapshot`
 
-`zaino-grpc-snapshot`'s publisher combines the NFS's latest `NfsPublication` and the chain view's latest
+`zingod-grpc-snapshot`'s publisher combines the NFS's latest `NfsPublication` and the chain view's latest
 publish into one `Arc<GrpcSnapshot>`. Every gRPC request or stream, probe, scrape and state log loads
 one and reads only it, so no answer mixes two moments.
 
@@ -273,8 +309,8 @@ subscribers.
 
 ## 9. Talking to validators and peers
 
-Every request goes through one `TrafficBalancer` (`zaino-traffic`); lanes, intervals, hedge
-delays and bench times are in [its guide](../packages/zaino-traffic/usage.md).
+Every request goes through one `TrafficBalancer` (`zingod-traffic`); lanes, intervals, hedge
+delays and bench times are in [its guide](../packages/zingod-traffic/usage.md).
 
 - **Members.** Each trusted validator, in `priority` tiers (0 first); then the whole peer set as
   one member below every tier (zebra picks the peer). Peers answer headers and blocks only.
@@ -302,7 +338,7 @@ delays and bench times are in [its guide](../packages/zaino-traffic/usage.md).
 ## 11. Telemetry
 
 Observation only: none of it changes a tip or what is served. State is read from one `GrpcSnapshot` at
-scrape (`zaino_*` and `zaino_chainview_*` gauges, `/status`); events are emitted where they
+scrape (`zingod_*` and `zingod_chainview_*` gauges, `/status`); events are emitted where they
 happen. Alarms log once WARN when raised, once INFO when cleared:
 
 | Alarm             | Raised when                                                                         |
@@ -310,18 +346,19 @@ happen. Alarms log once WARN when raised, once INFO when cleared:
 | stale             | a `Live` validator's tip trails its own clock-based height estimate by ≥ `STALE_TIP_BLOCKS` |
 | end of service    | a validator's release halts within a week of target time from its tip (75 s, 25 s from NU7) |
 | finality paused   | > depth non-finalized blocks for 60 s with the finalized tip unmoved                          |
+| tip unvouched     | best more than one block past the last block a trusted validator vouched for (a reorg's window, §4, or every validator down under `[p2p]`) |
 
 ## 12. Seams
 
 A trait exists only at a seam: a boundary with a second implementation (a real one or a test
 double), or one that keeps a dependency out of the crates above it.
 
-- `zaino_source::ChainDataSource`: JSON-RPC or indexer gRPC; tests drive the real client against
+- `zingod_source::ChainDataSource`: JSON-RPC or indexer gRPC; tests drive the real client against
   a `MockValidator`.
-- `zaino_chainview::PeerSource`, `zaino_traffic::PeerTransport`: zainod's `ZebraPeers`, which
+- `zingod_chainview::PeerSource`, `zingod_traffic::PeerTransport`: zingod's `ZebraPeers`, which
   keeps zebra-network out of both crates.
-- `zaino_chainview::UnspentOutputs`: the chain view sits below the indexes.
-- `zaino_persistence::PersistenceEngine` and `fs::Fs`: indexes see the port, never the engine;
+- `zingod_chainview::UnspentOutputs`: the chain view sits below the indexes.
+- `zingod_persistence::PersistenceEngine` and `fs::Fs`: indexes see the port, never the engine;
   `SimFs` tests crashes.
 
 Not seams: the gRPC service, each index, and the validator set (`TrafficBalancer` is not a

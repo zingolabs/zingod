@@ -1,0 +1,73 @@
+[package]
+name = "zingod-grpc"
+publish.workspace = true
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Lightwalletd-compatible gRPC (CompactTxStreamer) server routing each method to an index, the chain view or the validator."
+
+[dependencies]
+zingod-proto = { workspace = true }
+thiserror = { workspace = true }
+tonic.workspace = true
+futures.workspace = true
+tokio = { workspace = true, features = ["io-util", "macros", "net", "rt", "sync", "time"] }
+tower = { workspace = true, features = ["util"] }
+http = "1"
+http-body-util = { workspace = true }
+bytes = { workspace = true }
+
+# Claimed routes, one per index
+zingod-index-compact-block = { workspace = true }
+zingod-index-tree-state = { workspace = true }
+zingod-index-transparent-address = { workspace = true }
+# Domain values rendered onto the wire (index dispatches, `LightdInfo`'s upgrade schedule)
+zingod-primitives = { workspace = true }
+# TreeState carries its trees as hex strings.
+const-hex.workspace = true
+# t-address string -> `TransparentAddress` -> its locking script
+zcash_address = { workspace = true }
+zcash_transparent.workspace = true
+zcash_script.workspace = true
+# `NetworkType`: `LightdInfo.chainName` (declared)
+zcash_protocol = { workspace = true }
+prost.workspace = true
+http-body = "1.1.0"
+zingod-source.workspace = true
+metrics = { workspace = true }
+zingod-chainview.workspace = true
+tokio-util = { workspace = true, features = ["rt"] }
+ppp = "2.3"
+ipnet = { version = "2.12", features = ["serde"] }
+socket2 = { version = "0.6", features = ["all"] }
+tracing.workspace = true
+hyper-util = { workspace = true, features = ["http2", "server", "server-auto", "server-graceful", "service", "tokio"] }
+rustls = { workspace = true }
+tokio-rustls = { workspace = true }
+arc-swap = { workspace = true }
+zingod-persistence.workspace = true
+zingod-nfs.workspace = true
+zingod-traffic.workspace = true
+zingod-grpc-snapshot.workspace = true
+zingod-sync.workspace = true
+serde = { workspace = true, features = ["derive"] }
+strum = { version = "0.27", features = ["derive"] }
+rcgen.workspace = true
+aws-lc-rs = "1.19.0"
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "test-util"] }
+zingod-persistence = { workspace = true, features = ["testing"] }
+zingod-source = { workspace = true, features = ["testing"] }
+zingod-chainview = { workspace = true, features = ["testing"] }
+zingod-header-chain = { workspace = true, features = ["testing"] }
+zingod-nfs = { workspace = true, features = ["testing"] }
+zingod-grpc-snapshot = { workspace = true, features = ["testing"] }
+h2 = "0.4"
+
+[lints.rust]
+unreachable_pub = "warn"

@@ -23,7 +23,7 @@ async fn address_index_moves_orphaned_coinbase_to_the_winning_miner() -> Result<
     let mut env = TestEnv::builder().ready_timeout(READY);
     let validator = env.add_validator(Validator::zebrad("6.2.3").regtest());
     let indexer =
-        env.add_indexer(dev!(Indexer::Zainod, "../../Dockerfile").regtest().finalised_depth(DEPTH));
+        env.add_indexer(dev!(Indexer::Zingod, "../../Dockerfile").regtest().finalised_depth(DEPTH));
     env.build().await?;
 
     let (warm, _) = validator.tip().await?;
@@ -47,7 +47,7 @@ async fn address_index_moves_orphaned_coinbase_to_the_winning_miner() -> Result<
         let who = json!([{ "addresses": [address] }]);
         let balance = i64::from(indexer.get_taddress_balance(vec![address.to_owned()]).await?);
         let truth = vrpc.call_value("getaddressbalance", who.clone()).await?;
-        assert_eq!(Some(balance), truth["balance"].as_i64(), "{address} balance: zaino vs zebrad");
+        assert_eq!(Some(balance), truth["balance"].as_i64(), "{address} balance: zingod vs zebrad");
 
         let mut utxos: Vec<(String, u32, i64, u64)> = indexer
             .get_address_utxos(vec![address.to_owned()], 0u32.into(), 0)
@@ -82,7 +82,7 @@ async fn address_index_moves_orphaned_coinbase_to_the_winning_miner() -> Result<
         utxo_truth.sort();
         assert_eq!(
             utxos, utxo_truth,
-            "{address} UTXOs (txid, index, value, height): zaino vs zebrad"
+            "{address} UTXOs (txid, index, value, height): zingod vs zebrad"
         );
 
         let range = json!([{ "addresses": [address], "start": 1, "end": tip }]);
@@ -112,7 +112,10 @@ async fn address_index_moves_orphaned_coinbase_to_the_winning_miner() -> Result<
             zebrad_txs.into_iter().map(|(_, id, height)| (id, height)).collect();
         served.sort();
         tx_truth.sort();
-        assert_eq!(served, tx_truth, "{address} txs (txid, height) in [1, {tip}]: zaino vs zebrad");
+        assert_eq!(
+            served, tx_truth,
+            "{address} txs (txid, height) in [1, {tip}]: zingod vs zebrad"
+        );
 
         let orphaned: i64 = utxos_before
             .iter()

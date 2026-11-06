@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use serde_json::json;
-use ztest::backends::zainod::family;
+use ztest::backends::zingod::family;
 use ztest::prelude::*;
 
 const READY: Duration = Duration::from_secs(180);
@@ -26,7 +26,7 @@ async fn stalled_through_a_reorg_past_the_window_realigns_without_finalizing_orp
     let mut env = TestEnv::builder().ready_timeout(READY);
     let validator = env.add_validator(Validator::zebrad("6.2.3").regtest().mine_to(Pool::Orchard));
     let indexer = env.add_indexer(
-        dev!(Indexer::Zainod, "../../Dockerfile").regtest().finalised_depth(DEPTH).restartable(),
+        dev!(Indexer::Zingod, "../../Dockerfile").regtest().finalised_depth(DEPTH).restartable(),
     );
     env.build().await?;
 
@@ -54,20 +54,20 @@ async fn stalled_through_a_reorg_past_the_window_realigns_without_finalizing_orp
         assert_eq!(
             Some(hash.to_string().as_str()),
             truth.as_str(),
-            "{height} hash: zaino vs zebrad"
+            "{height} hash: zingod vs zebrad"
         );
     }
     for (height, hash) in &reorg.orphaned {
         let code = indexer.get_block_by_hash(*hash).await.err().and_then(|e| e.grpc_code());
         assert_eq!(code, Some(tonic::Code::NotFound), "orphan {hash} at {height} never served");
     }
-    for index in ZainoIndex::ALL {
+    for index in ZingodIndex::ALL {
         let durable = indexer.finalized_height(index).await?;
         assert_eq!(durable, Some(tip - DEPTH), "{index:?} durable = tip − DEPTH, on the winner");
         assert_eq!(indexer.synced(index).await?, Some(true), "{index:?} serving");
     }
     let scrape = indexer.read(SCRAPE).await?;
     assert_eq!(scrape.counter_total(family::REORGS), Some(1), "realign counted as one rollback");
-    assert_eq!(scrape.height(family::BEST_TIP), Some(tip), "zaino_best_tip");
+    assert_eq!(scrape.height(family::BEST_TIP), Some(tip), "zingod_best_tip");
     Ok(())
 }

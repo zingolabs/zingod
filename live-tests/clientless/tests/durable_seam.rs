@@ -3,7 +3,7 @@
 //! - Below `tip + 1 − finalised_depth` → durable index, above → non-finalized state
 //! - Spanning range = stitched from both (only place a served chain can gain a gap, a duplicate,
 //!   or two mismatched halves)
-//! - Shipped depth (1000) out of any regtest fixture's reach → ztest's regtest zainod runs at
+//! - Shipped depth (1000) out of any regtest fixture's reach → ztest's regtest zingod runs at
 //!   `REGTEST_FINALISED_DEPTH` (100)
 
 use std::time::Duration;
@@ -17,7 +17,7 @@ const READY: Duration = Duration::from_secs(180);
 const DURABLE_TIMEOUT: Duration = Duration::from_secs(300);
 /// 60-block durable band below the seam + the 100-block window above it
 const CHAIN_LEN: u32 = 160;
-const FAST_SEAM: u32 = ztest::backends::zainod::REGTEST_FINALISED_DEPTH;
+const FAST_SEAM: u32 = ztest::backends::zingod::REGTEST_FINALISED_DEPTH;
 
 /// Durable past the seam, then every read shape across it = one chain = the validator's
 #[ztest::qos::integration]
@@ -25,7 +25,7 @@ const FAST_SEAM: u32 = ztest::backends::zainod::REGTEST_FINALISED_DEPTH;
 async fn reads_across_the_seam_serve_the_validators_chain() -> Result<()> {
     let mut env = TestEnv::builder().ready_timeout(READY);
     let validator = env.add_validator(Validator::zebrad("6.2.3").regtest());
-    let indexer = env.add_indexer(dev!(Indexer::Zainod, "../../Dockerfile").regtest());
+    let indexer = env.add_indexer(dev!(Indexer::Zingod, "../../Dockerfile").regtest());
     env.build().await?;
 
     let tip = validator.generate_blocks(CHAIN_LEN).await?;
@@ -38,7 +38,7 @@ async fn reads_across_the_seam_serve_the_validators_chain() -> Result<()> {
     // - Unpublished until the first commit → keep polling
     let deadline = tokio::time::Instant::now() + DURABLE_TIMEOUT;
     let frontier = loop {
-        let durable = indexer.finalized_height(ZainoIndex::CompactBlock).await?;
+        let durable = indexer.finalized_height(ZingodIndex::CompactBlock).await?;
         if let Some(durable) = durable.filter(|d| *d >= floor) {
             break durable;
         }
@@ -107,7 +107,7 @@ async fn reads_across_the_seam_serve_the_validators_chain() -> Result<()> {
         assert_eq!(
             hex::encode(&served),
             expected,
-            "{height} hash: zaino vs zebrad (floor {floor})"
+            "{height} hash: zingod vs zebrad (floor {floor})"
         );
     }
     Ok(())

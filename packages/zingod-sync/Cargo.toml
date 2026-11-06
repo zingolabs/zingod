@@ -1,0 +1,42 @@
+[package]
+name = "zingod-sync"
+publish.workspace = true
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Zingod's index sync plumbing: the finalized stream every index writer follows, its byte-bounded queues and the writers' commit cadence."
+
+[dependencies]
+futures.workspace = true
+metrics = { workspace = true }
+proptest = { workspace = true, optional = true }
+rayon.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["macros", "rt", "sync"] }
+tokio-util = { workspace = true, features = ["rt"] }
+tracing.workspace = true
+zingod-header-chain.workspace = true
+zingod-persistence.workspace = true
+zingod-primitives.workspace = true
+zingod-source.workspace = true
+zingod-traffic.workspace = true
+zcash_protocol.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+tokio = { workspace = true, features = ["test-util"] }
+zingod-header-chain = { workspace = true, features = ["testing"] }
+zingod-persistence = { workspace = true, features = ["testing"] }
+zingod-source = { workspace = true, features = ["testing"] }
+zingod-traffic = { workspace = true, features = ["testing"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+unreachable_pub = "warn"
+
+[features]
+# `SyncProgress::fixed` (no follower), `testing` (index-writer test kit)
+testing = ["dep:proptest", "tokio/test-util", "zingod-persistence/testing"]

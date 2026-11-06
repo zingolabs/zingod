@@ -1,6 +1,6 @@
 # Zingod
 
-Zingod is a Zcash indexer written in Rust. `zainod` follows the chain from one or more trusted
+Zingod is a Zcash indexer written in Rust. `zingod` follows the chain from one or more trusted
 [Zebra](https://github.com/ZcashFoundation/zebra) validators and, optionally, Zcash p2p peers,
 builds its own indexes, and serves light wallets over the lightwalletd-compatible
 `CompactTxStreamer` gRPC service.
@@ -10,51 +10,92 @@ separate hosts if you like, and a new index needs no change to the validator
 ([who owns what](./docs/architecture.md#1-who-owns-what)).
 
 [![latest release](https://img.shields.io/github/v/tag/zingolabs/zingod?filter=v*&label=latest%20release)](https://github.com/zingolabs/zingod/tags)
+[![Docker Hub](https://img.shields.io/docker/v/zingodevops/zingod?sort=semver&label=docker)](https://hub.docker.com/r/zingodevops/zingod)
 
 ## Quick start
 
+You need a Zebra node with JSON-RPC enabled (`[rpc] listen_addr` in `zebrad.toml`). Zingod
+trusts it for validation and reads every block from it.
+
+**1. Write a config.** Every key at its default:
+
 ```sh
-cargo run --release -p zainod -- generate-config   # then edit; every key: docs/example_configs/zainod.toml
-cargo run --release -p zainod -- start
-cargo nextest run --workspace                      # unit tests, no validator
+docker run --rm zingodevops/zingod generate-config -o /dev/stdout > zingod.toml
 ```
+
+Set `network` (`mainnet`, `testnet` or `regtest`) and point `[[trusted_validators]]`
+`jsonrpc_address` at your zebrad. Everything else can stay as it is; the
+[annotated config](./docs/example_configs/zingod.toml) explains each key.
+
+**2. Run it.** The image runs as UID 1000, keeps its indexes under `/var/lib/zingod` and serves
+gRPC on 8137:
+
+```sh
+docker run -d --name zingod -p 8137:8137 \
+  -v ./zingod.toml:/etc/zingod/zingod.toml:ro \
+  -v zingod-data:/var/lib/zingod \
+  zingodevops/zingod
+```
+
+**3. Wait for the indexes.** The first start builds every index from the validator: about an hour
+on NVMe with the validator on the same host, longer over a network. Or skip the sync and
+[bootstrap from a snapshot](#migrating-to-zingod). The gRPC port also answers plain HTTPS
+(self-signed by default): `/status` reports the [state](./docs/running.md#states) (`syncing`,
+then `serving`) and the tip, and `/readyz` is 200 once wallets can be served:
+
+```sh
+curl -sk https://localhost:8137/status
+curl -skf https://localhost:8137/readyz && echo serving
+```
+
+Point a light wallet at `localhost:8137`. [Running zingod](./docs/running.md) covers the rest:
+TLS, the admin listener and metrics, p2p peers, `zingod hold` for maintenance, systemd, and what
+to expose to the internet. [Docker](./docs/docker.md) covers volumes, TLS mounts and Compose.
+
+Without a container (`protoc` on `PATH`):
+
+```sh
+cargo install --locked --git https://github.com/zingolabs/zingod zingod
+zingod generate-config             # writes $XDG_CONFIG_HOME/zingod/zingod.toml; edit it
+zingod start
+```
+
+Developing: `cargo nextest run --workspace` runs the unit tests with no validator; see
+[CONTRIBUTING.md](./CONTRIBUTING.md) and [Testing](./docs/testing.md).
+
+## Migrating to Zingod
+
+Zingod reads nothing from a previous indexer's install: its config, data directory and metrics
+are its own. The [changelog](./CHANGELOG.md) lists every config key and metric family.
+
+1. Write a config with `zingod generate-config` and set your validator's address and
+   credentials. An unknown key refuses to start.
+2. Give it an empty data directory: `/var/lib/zingod` in the image, `$XDG_CACHE_HOME/zingod` on a
+   host. Zingod keeps one directory per index under `indexes/`.
+3. Either let the first start sync from your validator, or download the indexes: with a fast
+   connection, a published snapshot bootstraps every index before boot. Add to `zingod.toml`:
+
+   ```toml
+   [snapshot]
+   manifest = "https://snapshots.zingolabs.dev/mainnet/manifest.json"
+   ```
+
+   The image ships the downloader (`aria2c`); on a host install it must be on `PATH`. Only empty
+   index directories are filled, each archive's hash is checked, and a restart resumes
+   ([index snapshot](./docs/running.md#index-snapshot)).
+4. Point dashboards at the `zingod_*` families. Zingod serves gRPC only; node JSON-RPC goes to the
+   validator.
 
 ## Documentation
 
 - [Architecture](./docs/architecture.md): **start here.** How the pieces fit and why.
-- [Running zainod](./docs/running.md): configuration, states, hold, systemd, network exposure.
+- [Running zingod](./docs/running.md): configuration, states, hold, systemd, network exposure.
 - [RPC API](./docs/rpc_api.md): the methods served and the status codes a client must tell apart.
 - [What the clients actually call](./docs/client-requirements.md): the two wallet sync engines.
-- [Legacy surface](./docs/legacy-surface.md): every RPC and index the 0.10 stack served, and what
-  is not built yet.
 - [Docker](./docs/docker.md), [Testing](./docs/testing.md),
   [Updating Zebra](./docs/updating_zebra_crates.md), [Glossary](./CONTEXT.md).
 - [CONTRIBUTING.md](./CONTRIBUTING.md), [RELEASING.md](./RELEASING.md),
   [live-test guidelines](./live-tests/CLAUDE.md).
-
-### Crate usage guides
-
-All crates live under `packages/`; each guide covers that crate's API, invariants and tests.
-
-- [`zainod`](./packages/zainod/usage.md): the daemon binary.
-- [`zaino-grpc`](./packages/zaino-grpc/usage.md): the gRPC routes and serve stack.
-- [`zaino-grpc-snapshot`](./packages/zaino-grpc-snapshot/usage.md): the one published `GrpcSnapshot` of everything served.
-- [`zaino-chainview`](./packages/zaino-chainview/usage.md): header sync, the mempool view and submission.
-- [`zaino-header-chain`](./packages/zaino-header-chain/usage.md): the Validated Header tree, finality, `validate`.
-- [`zaino-nfs`](./packages/zaino-nfs/usage.md): the non-finalized state.
-- [`zaino-sync`](./packages/zaino-sync/usage.md): the finalized stream and every index writer's loop.
-- [`zaino-persistence`](./packages/zaino-persistence/usage.md): the persistence port, `DiskEngine`, the on-disk layout and crash contract.
-- [`zaino-index-compact-block`](./packages/zaino-index-compact-block/usage.md): height → gRPC-framed compact block.
-- [`zaino-index-utxo-set`](./packages/zaino-index-utxo-set/usage.md): unspent outputs' values (compact-block fees).
-- [`zaino-index-tree-state`](./packages/zaino-index-tree-state/usage.md): commitment-tree states and subtree roots.
-- [`zaino-index-transparent-address`](./packages/zaino-index-transparent-address/usage.md): the t-address RPCs.
-- [`zaino-internal-block-hash-to-height`](./packages/zaino-internal-block-hash-to-height/usage.md): the hash → height locator.
-- [`zaino-internal-txid-location`](./packages/zaino-internal-txid-location/usage.md): where each mined transaction sits.
-- [`zaino-source`](./packages/zaino-source/usage.md): the `ChainDataSource` port, its JSON-RPC and indexer-gRPC clients, `MockChain`.
-- [`zaino-traffic`](./packages/zaino-traffic/usage.md): one scheduler for every request to validators and peers.
-- [`zaino-peers`](./packages/zaino-peers/usage.md): zebra-network embedded as Zingod's p2p layer.
-- [`zaino-primitives`](./packages/zaino-primitives/usage.md): domain types and protocol constants.
-- [`zaino-proto`](./packages/zaino-proto/README.md): vendored lightwallet and Zebra indexer protocols.
 
 ## Security disclosure
 

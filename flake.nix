@@ -14,7 +14,7 @@
   };
 
   ### Build with Nix
-  # nix build .#zainod — build the binary (output at `./result/bin/zainod`)
+  # nix build .#zingod — build the binary (output at `./result/bin/zingod`)
   # nix develop — enter a dev shell with the pinned Rust toolchain and build deps
 
   outputs = { self, nixpkgs, flake-utils, crane, fenix }:
@@ -27,7 +27,7 @@
           });
 
       overlay = final: _prev: {
-        zainod = final.callPackage ./nix/package.nix {
+        zingod = final.callPackage ./nix/package.nix {
           craneLib = mkCraneLib final;
         };
       };
@@ -44,10 +44,10 @@
 
         craneLib = mkCraneLib pkgs;
 
-        zainod = pkgs.zainod;
+        zingod = pkgs.zingod;
 
         # Build env defined once in nix/package.nix, reused by devShell via passthru
-        inherit (zainod.passthru) commonArgs;
+        inherit (zingod.passthru) commonArgs;
 
         # crates.io tarball + its own Cargo.lock (not in nixpkgs)
         code-dupes = pkgs.rustPlatform.buildRustPackage rec {
@@ -63,15 +63,15 @@
       in
       {
         packages = {
-          inherit zainod;
-          default = zainod;
+          inherit zingod;
+          default = zingod;
         };
 
         apps.default = {
           type = "app";
-          program = "${zainod}/bin/zainod";
+          program = "${zingod}/bin/zingod";
           meta = {
-            inherit (zainod.meta) description;
+            inherit (zingod.meta) description;
           };
         };
 
@@ -90,7 +90,7 @@
             cargo-deny
             code-dupes
 
-            # zainod `[snapshot]` bootstrap + its e2e test
+            # zingod `[snapshot]` bootstrap + its e2e test
             aria2
 
             # Integration tests

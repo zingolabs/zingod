@@ -1,7 +1,7 @@
-//! Activation heights = the validator's `getblockchaininfo.upgrades` (zaino#1076)
+//! Activation heights = the validator's `getblockchaininfo.upgrades` (zingod#1076)
 //!
-//! - zainod config = network kind only (regtest placeholder = `ActivationHeights::regtest_default`)
-//! - Upgrades map → schedule: unit-tested at `parse_blockchain_info` (zaino-source `json.rs`)
+//! - zingod config = network kind only (regtest placeholder = `ActivationHeights::regtest_default`)
+//! - Upgrades map → schedule: unit-tested at `parse_blockchain_info` (zingod-source `json.rs`)
 
 use std::time::Duration;
 
@@ -31,7 +31,7 @@ async fn getblockchaininfo_reports_the_configured_schedule() -> Result<()> {
         .set_nu6_3(Some(NU6_3_TRANSITION_BOUNDARY))
         .build();
     let placeholder = ActivationHeights::regtest_default();
-    assert_ne!(nu6_3_at_boundary, placeholder, "premise: schedule != zainod's config placeholder");
+    assert_ne!(nu6_3_at_boundary, placeholder, "premise: schedule != zingod's config placeholder");
 
     let mut env = TestEnv::builder().ready_timeout(READY).activation_heights(nu6_3_at_boundary);
     let validator = env.add_validator(Validator::zebrad("6.2.3").regtest().mine_to(Pool::Orchard));

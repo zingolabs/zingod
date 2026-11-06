@@ -1,9 +1,9 @@
 # Zingod's RPC surface
 
-`zainod` serves the lightwalletd-compatible `CompactTxStreamer` gRPC service defined by the
+`zingod` serves the lightwalletd-compatible `CompactTxStreamer` gRPC service defined by the
 [LightWallet Protocol](https://github.com/zcash/lightwallet-protocol/blob/main/walletrpc/service.proto)
-on `serve.grpc_listen_address` (default `127.0.0.1:8137`), HTTP/2, plaintext unless
-`[serve.tls]` is set. Zingod serves no JSON-RPC: node queries go to the validator's own.
+on `serve.grpc_listen_address` (default `127.0.0.1:8137`), HTTP/2 over TLS (a self-signed pair
+by default; [Network exposure](running.md#network-exposure)). Zingod serves no JSON-RPC: node queries go to the validator's own.
 
 ## Where each method is answered
 
@@ -19,7 +19,7 @@ already stores are asked of it ([architecture §1](./architecture.md#1-who-owns-
 | `GetTaddressBalance`, `GetTaddressBalanceStream`        | transparent-address index                                                                                                                      |
 | `GetTaddressTransactions`                               | transparent-address index for the `{height, txid}` set, the bytes as `GetTransaction`'s                                                        |
 | `GetTransaction`                                        | validator; none answering: the served mempool's bytes, else the block the txid-location index names, from p2p peers, checked and the transaction cut out |
-| `GetStandardFee`                                        | computed (no validator call): the ZIP 317 marginal fee for the block after best, zatoshis per logical action (`zaino_primitives::protocol::standard_fee`: zebrad's rule), estimator version 0 |
+| `GetStandardFee`                                        | computed (no validator call): the ZIP 317 marginal fee for the block after best, zatoshis per logical action (`zingod_primitives::protocol::standard_fee`: zebrad's rule), estimator version 0 |
 | `SendTransaction`                                       | chain view [submission](./architecture.md#6-submission): a trusted `checkadmission` answers, then relayed through the peers                    |
 | `GetMempoolTx`, `GetMempoolStream`                      | chain view [mempool](./architecture.md#5-the-mempool-view): listed by a trusted validator, admitted by a peer quorum, or our own accepted send |
 | `GetLightdInfo`                                         | the served `GrpcSnapshot`: its tip, the verified best, the upgrade schedule (no validator call)                                                |
@@ -47,7 +47,7 @@ already stores are asked of it ([architecture §1](./architecture.md#1-who-owns-
 `blockHeight` is the served tip, `estimatedHeight` the verified best, `chainName` the configured
 network; the branch and next upgrade come from the upgrade schedule at the served tip.
 `lightwalletProtocolVersion` is the vendored protos' release (the newest heading of
-`packages/zaino-proto/lightwallet-protocol/CHANGELOG.md`).
+`packages/zingod-proto/lightwallet-protocol/CHANGELOG.md`).
 
 `GetTransaction` answers a mined transaction with its height, and an unmined or orphaned one
 with height 0, the wire's only "no height" value.

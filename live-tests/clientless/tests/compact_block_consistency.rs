@@ -29,7 +29,7 @@ async fn unfiltered_compact_blocks_match_chain_metadata() -> Result<()> {
     // Orchard-receiver miner → Ironwood coinbase actions (transparent miner = vacuous walk)
     let mut env = TestEnv::builder().ready_timeout(READY);
     let validator = env.add_validator(Validator::zebrad("6.2.3").regtest().mine_to(Pool::Orchard));
-    let indexer = env.add_indexer(dev!(Indexer::Zainod, "../../Dockerfile").regtest());
+    let indexer = env.add_indexer(dev!(Indexer::Zingod, "../../Dockerfile").regtest());
     env.build().await?;
 
     let tip = validator.generate_blocks(8).await?;
@@ -89,7 +89,7 @@ async fn unfiltered_compact_blocks_match_chain_metadata() -> Result<()> {
         // Oracle parity (live-only: package tests' truth = the served object itself)
         assert_eq!(
             sizes, oracle[height as usize],
-            "(sapling, orchard, ironwood) tree sizes at {height}: zaino vs zebrad"
+            "(sapling, orchard, ironwood) tree sizes at {height}: zingod vs zebrad"
         );
 
         prev_sapling = sapling_size;
@@ -128,7 +128,7 @@ async fn coinbase_pool_follows_nu6_3_activation(#[case] nu6_3: Option<u32>) -> R
         .build();
     let mut env = TestEnv::builder().ready_timeout(READY).activation_heights(nu6_3_per_case);
     let validator = env.add_validator(Validator::zebrad("6.2.3").regtest().mine_to(Pool::Orchard));
-    let indexer = env.add_indexer(dev!(Indexer::Zainod, "../../Dockerfile").regtest());
+    let indexer = env.add_indexer(dev!(Indexer::Zingod, "../../Dockerfile").regtest());
     env.build().await?;
 
     // Two past the transition boundary (each era > 1 block)
@@ -139,7 +139,7 @@ async fn coinbase_pool_follows_nu6_3_activation(#[case] nu6_3: Option<u32>) -> R
     assert_eq!(blocks.len() as u64, u64::from(tip), "every height in [1, {tip}]");
 
     // - Raw-block predicate = zebrad's routing; raw-vs-served = zingod's (both collected per run)
-    // - <https://github.com/zingolabs/zaino/issues/1368>
+    // - <https://github.com/zingolabs/zingod/issues/1368>
     let vrpc = validator.json_rpc().await?;
     let mut violations: Vec<String> = Vec::new();
     for (index, served) in blocks.iter().enumerate() {
@@ -182,7 +182,7 @@ async fn coinbase_pool_follows_nu6_3_activation(#[case] nu6_3: Option<u32>) -> R
                 "height {height}: want {expected:?}, raw is {observed:?} \
                  (is_coinbase {is_coinbase}, v{version}, sapling {sapling}, \
                  orchard {orchard}, ironwood {ironwood}); \
-                 zaino served orchard {served_orchard}, ironwood {served_ironwood}"
+                 zingod served orchard {served_orchard}, ironwood {served_ironwood}"
             ));
         }
     }

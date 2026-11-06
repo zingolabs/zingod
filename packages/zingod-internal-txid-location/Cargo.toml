@@ -1,0 +1,23 @@
+[package]
+name = "zingod-internal-txid-location"
+publish.workspace = true
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Txid -> mined location index: where GetTransaction finds a mined transaction's block"
+
+[dependencies]
+zingod-persistence.workspace = true
+zingod-primitives.workspace = true
+zingod-sync.workspace = true
+zcash_protocol.workspace = true
+
+[dev-dependencies]
+zingod-persistence = { workspace = true, features = ["testing"] }
+zingod-sync = { workspace = true, features = ["testing"] }
+zingod-source = { workspace = true, features = ["testing"] }
+tokio = { workspace = true, features = ["macros", "rt"] }
+
+[lints.rust]
+unreachable_pub = "warn"

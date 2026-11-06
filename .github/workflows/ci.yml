@@ -3,10 +3,10 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [dev]
+    branches: [main]
 
 # - PR push supersedes its own run
-# - every dev commit keeps its result
+# - every main commit keeps its result
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -29,7 +29,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          save-if: ${{ github.ref == 'refs/heads/dev' }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       # pre-push stage = every hook (stage-less hooks run in all stages)
       - run: pre-commit run --all-files --hook-stage pre-push
@@ -43,13 +43,13 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          save-if: ${{ github.ref == 'refs/heads/dev' }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - run: cargo nextest run --locked --workspace --all-features --no-fail-fast
 
   features:
     name: Each feature compiles
-    # dev only (each package ≤ 1 feature → --each-feature = --feature-powerset)
+    # main only (each package ≤ 1 feature → --each-feature = --feature-powerset)
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:

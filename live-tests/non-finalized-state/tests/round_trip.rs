@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use anyhow::{ensure, Result};
 use pretty_assertions::assert_eq;
-use ztest::backends::zainod::family;
+use ztest::backends::zingod::family;
 use ztest::prelude::*;
 
 const READY: Duration = Duration::from_secs(180);
@@ -29,7 +29,7 @@ async fn flip_flopping_between_two_branches_serves_each_byte_identically() -> Re
     let mut env = TestEnv::builder().ready_timeout(READY);
     let validator = env.add_validator(Validator::zebrad("6.2.3").regtest().mine_to(Pool::Orchard));
     let indexer =
-        env.add_indexer(dev!(Indexer::Zainod, "../../Dockerfile").regtest().finalised_depth(DEPTH));
+        env.add_indexer(dev!(Indexer::Zingod, "../../Dockerfile").regtest().finalised_depth(DEPTH));
     env.build().await?;
 
     let (warm, _) = validator.tip().await?;

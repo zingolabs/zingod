@@ -1,4 +1,4 @@
-# zainod image on Knope's `vX.Y.Z` release tag (RELEASING.md)
+# zingod image on Knope's `vX.Y.Z` release tag (RELEASING.md)
 name: Release
 
 on:
@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   docker:
-    name: zainod image
+    name: zingod image
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -28,7 +28,7 @@ jobs:
       - id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ${{ secrets.DOCKERHUB_USERNAME }}/zainod
+          images: ${{ secrets.DOCKERHUB_USERNAME }}/zingod
           tags: type=semver,pattern={{version}}
 
       - uses: docker/build-push-action@v7

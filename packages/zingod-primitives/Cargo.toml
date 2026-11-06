@@ -1,0 +1,27 @@
+[package]
+name = "zingod-primitives"
+publish.workspace = true
+description = "Zcash chain-level domain types (heights, hashes, blocks, transactions) shared by every Zingod crate."
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+license.workspace = true
+
+[dependencies]
+metrics.workspace = true
+serde = { workspace = true, features = ["derive"] }
+sha2 = "0.10"
+thiserror = { workspace = true }
+uint = "0.9"
+zcash_encoding = "0.5"
+zcash_protocol.workspace = true
+zcash_transparent.workspace = true
+
+[lints.rust]
+unsafe_code = "forbid"
+unreachable_pub = "warn"
+
+[dev-dependencies]
+toml.workspace = true

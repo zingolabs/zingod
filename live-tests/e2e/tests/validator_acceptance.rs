@@ -1,6 +1,6 @@
-//! Wallet spends at each note age, synced through zainod, accepted by zebrad
+//! Wallet spends at each note age, synced through zingod, accepted by zebrad
 //!
-//! - Spends anchor on zainod's served tree states (a wrong tree = a rejected spend)
+//! - Spends anchor on zingod's served tree states (a wrong tree = a rejected spend)
 //! - Aging mined to `FILLER_ADDRESS` (no spender gains a younger note)
 
 use std::time::Duration;
@@ -32,7 +32,7 @@ const RECEIVERS: [Pool; 2] = [Pool::Ironwood, Pool::Sapling];
 async fn aged_coinbase_tip_and_aged_notes_spend_to_ironwood_and_sapling() -> Result<()> {
     let mut env = TestEnv::builder().ready_timeout(READY);
     let validator = env.add_validator(Validator::zebrad("6.2.3").regtest().mine_to(FUND));
-    let indexer = env.add_indexer(dev!(Indexer::Zainod, "../../Dockerfile").regtest());
+    let indexer = env.add_indexer(dev!(Indexer::Zingod, "../../Dockerfile").regtest());
     let wallet = env.add_wallet(Wallet::librustzcash());
     env.build().await?;
 

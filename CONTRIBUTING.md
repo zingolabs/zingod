@@ -1,7 +1,7 @@
 # Contributing to Zingod
 
 Contributions of code, documentation, bug reports and feature requests are
-welcome. To run Zingod, start with [running zainod](./docs/running.md).
+welcome. To run Zingod, start with [running zingod](./docs/running.md).
 
 ## Security issues
 
@@ -23,7 +23,7 @@ The ZingoLabs [Matrix channel](https://matrix.to/#/!cVsptZxBgWgmxWlHYB:matrix.or
 
 ## Pull requests
 
-- Open PRs against [`dev`](https://github.com/zingolabs/zingod/tree/dev), from a
+- Open PRs against [`main`](https://github.com/zingolabs/zingod/tree/main), from a
   personal fork if you are a new contributor. Keep a PR in `Draft` until it is
   ready for review.
 - Run the lints before pushing ([Development](#development)).
