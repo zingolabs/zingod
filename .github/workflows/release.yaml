@@ -1,62 +1,131 @@
-# GitHub release + zingod image on Knope's `vX.Y.Z` tag (RELEASING.md)
+# Release = this workflow, dispatched on main (RELEASING.md)
+#
+# - prepare: Knope's bump + CHANGELOG section as a patch, the suite on that tree, a summary to
+#   review
+# - publish: once a reviewer approves the `release` environment, commit + tag as
+#   github-actions[bot], GitHub release from the changelog section, image to Docker Hub
+# - no app, no personal token: GitHub Actions is the one bypass actor on `main` and `v*`
 name: Release
 
 on:
-  push:
-    tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+'
-      - 'v[0-9]+.[0-9]+.[0-9]+-*'
+  workflow_dispatch:
+    inputs:
+      override_version:
+        description: Release this version instead of what the change files add up to (1.0.0 only)
+        type: string
+      prerelease_label:
+        description: Pre-release label (`rc` → 1.0.0-rc.1); empty = stable
+        type: string
 
 permissions:
   contents: read
 
+env:
+  RUSTC_WRAPPER: sccache
+  SCCACHE_GHA_ENABLED: "true"
+  CARGO_INCREMENTAL: "0"
+
+defaults:
+  run:
+    shell: nix develop -c bash --noprofile --norc -eo pipefail {0}
+
 jobs:
-  release:
-    name: GitHub release
+  prepare:
+    name: Prepare
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/devshell
+      - uses: mozilla-actions/sccache-action@v0.0.11
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: false
+
+      # An environment with no required reviewers approves itself
+      - name: The release environment requires a reviewer
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rules=$(gh api "repos/$GITHUB_REPOSITORY/environments/release" --jq '[.protection_rules[].type] | join(",")')
+          case "$rules" in *required_reviewers*) ;; *) echo "environment 'release' has no required reviewers" >&2; exit 1 ;; esac
+
+      - id: bump
+        name: Bump + CHANGELOG.md from .changeset/
+        env:
+          OVERRIDE: ${{ inputs.override_version }}
+          LABEL: ${{ inputs.prerelease_label }}
+        run: |
+          args=()
+          [ -n "$OVERRIDE" ] && args+=(--override-version "$OVERRIDE")
+          [ -n "$LABEL" ] && args+=(--prerelease-label "$LABEL")
+          knope prepare-release "${args[@]}"
+          version=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["version"])')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          awk -v v="$version" '/^## / { on = ($2 == v); next } on { print }' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          test -s "$RUNNER_TEMP/notes.md" || { echo "CHANGELOG.md has no ## $version section" >&2; exit 1; }
+          git add -A && git diff --cached --binary > "$RUNNER_TEMP/release.patch"
+          { echo "# Release $version"; echo; cat "$RUNNER_TEMP/notes.md"; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: The suite, on the tree about to ship
+        run: cargo nextest run --locked --workspace --all-features --no-fail-fast
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release
+          path: |
+            ${{ runner.temp }}/release.patch
+            ${{ runner.temp }}/notes.md
+          retention-days: 7
+
+  publish:
+    name: Publish
+    needs: prepare
+    environment: release
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: release
+          path: ${{ runner.temp }}
 
-      # Notes = this version's CHANGELOG.md section (Knope wrote it in the tagged commit)
-      - name: Release notes from CHANGELOG.md
+      # The push refuses a branch that moved since `prepare` ran (non-fast-forward): dispatch again
+      - name: Commit, tag, push
+        shell: bash
         run: |
-          version="${GITHUB_REF_NAME#v}"
-          awk -v v="$version" '
-            /^## / { on = ($2 == v) ; next }
-            on { print }
-          ' CHANGELOG.md > notes.md
-          test -s notes.md || { echo "CHANGELOG.md has no ## $version section" >&2; exit 1; }
+          git apply --index "$RUNNER_TEMP/release.patch"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: release $VERSION"
+          git tag "v$VERSION"
+          git push origin "HEAD:$GITHUB_REF_NAME" "v$VERSION"
 
-      - name: Create the release
+      - name: GitHub release
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           prerelease=""
-          case "$GITHUB_REF_NAME" in *-*) prerelease="--prerelease" ;; esac
-          gh release create "$GITHUB_REF_NAME" --title "${GITHUB_REF_NAME#v}" --notes-file notes.md $prerelease
-
-  docker:
-    name: zingod image
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
+          case "$VERSION" in *-*) prerelease="--prerelease" ;; esac
+          gh release create "v$VERSION" --title "$VERSION" --notes-file "$RUNNER_TEMP/notes.md" $prerelease
 
       - uses: docker/setup-buildx-action@v4
-
       - uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_ACCESS_TOKEN }}
-
       # X.Y.Z, + `latest` unless a pre-release
       - id: meta
         uses: docker/metadata-action@v6
         with:
           images: ${{ secrets.DOCKERHUB_USERNAME }}/zingod
-          tags: type=semver,pattern={{version}}
-
+          tags: type=semver,pattern={{version}},value=v${{ env.VERSION }}
       - uses: docker/build-push-action@v7
         with:
           context: .
