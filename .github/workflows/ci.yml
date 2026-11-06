@@ -58,6 +58,6 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - run: cargo hack check --locked --workspace --each-feature --lib --bins --tests
+      - run: cargo hack check --locked --workspace --each-feature --all-targets
         env:
           RUSTFLAGS: -D warnings
