@@ -8,7 +8,7 @@ The sets, how to run them and the cluster setup are in
 
 ## What belongs here
 
-- A test that exercises Zaino internals and needs no real validator or wallet is a
+- A test that exercises Zingod internals and needs no real validator or wallet is a
   unit test in `packages/`, not a live test.
 - All reorg testing lives in `non-finalized-state`
   ([README](non-finalized-state/README.md)); sync profiles only tolerate reorgs.
@@ -72,7 +72,7 @@ Two tests differing only in one input (typically the pool) are one `#[rstest]`.
 async fn send_to_self(#[case] pool: Pool) -> Result<()> {
 ```
 
-Zebra is the only validator, so it is not an axis (how Zaino reaches it:
+Zebra is the only validator, so it is not an axis (how Zingod reaches it:
 [running.md: Validator client](../docs/running.md#validator-client)). A single-case
 `#[rstest]` is noise: write a plain test.
 

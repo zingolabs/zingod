@@ -18,7 +18,7 @@ the `bytes::Bytes` fields.
 - `proto::zebra_indexer` — zebrad's indexer service (`zebra.indexer.rpc`:
   `ChainTipChange`, `NonFinalizedStateChange`, `MempoolChange`, `GetBlock`,
   `GetBlockRange`): zebra's `zebra-rpc/proto/indexer.proto` plus `GetBlockRange`
-  (Zaino's zebra fork). Zaino is a client (`zaino-source`: push streams and block
+  (Zingod's zebra fork). Zingod is a client (`zaino-source`: push streams and block
   fetch, `[[trusted_validators]] indexer_address`); the server half serves tests'
   fake zebrad.
 - `LIGHTWALLET_PROTOCOL_VERSION` — the vendored release (newest

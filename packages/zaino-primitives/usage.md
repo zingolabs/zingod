@@ -1,16 +1,16 @@
 # zaino-primitives
 
-Zaino's domain vocabulary: Zcash chain types in Zaino's own terms, independent of how they are
-transported or stored. Every other Zaino crate that needs a height, hash, block or amount
+Zingod's domain vocabulary: Zcash chain types in Zingod's own terms, independent of how they are
+transported or stored. Every other Zingod crate that needs a height, hash, block or amount
 depends on this one. The types themselves: the rustdoc of `types`, `protocol` and `sha256d`.
 
 ## Dependencies: `thiserror`, `sha2`, `uint`, `serde`, `metrics` and librustzcash's light crates only
 
 Anything added here lands in every crate above it.
 
-- `zcash_protocol` and `zcash_transparent` carry the protocol types Zaino takes
+- `zcash_protocol` and `zcash_transparent` carry the protocol types Zingod takes
   as-is (heights, block hashes, txids, values, outpoints, scripts, upgrade schedules); there is no
-  Zaino schedule type, only `zcash_protocol`'s `LocalNetwork`.
+  Zingod schedule type, only `zcash_protocol`'s `LocalNetwork`.
 - `sha2` for `sha256d`, the one implementation (block hashes, merkle nodes, pre-v5 txids);
   `uint` for the 256-bit `Target` arithmetic.
 - No domain type implements serde: formats are owned by the boundary that speaks them. `serde` is

@@ -1,6 +1,6 @@
 [package]
 name = "clientless"
-description = "Clientless live tests: exercise Zaino's gRPC surface against a live validator, on the ztest k8s harness (no wallet client)."
+description = "Clientless live tests: exercise Zingod's gRPC surface against a live validator, on the ztest k8s harness (no wallet client)."
 publish = false
 
 authors.workspace = true

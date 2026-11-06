@@ -6,10 +6,10 @@ a regtest zebrad and a zainod built from this tree on the ztest Kubernetes harne
 
 ## How the tests are built
 
-**The validator is the oracle.** After a reorg, Zaino's answers are compared with zebrad's own
+**The validator is the oracle.** After a reorg, Zingod's answers are compared with zebrad's own
 JSON-RPC (`getblockhash`, `z_gettreestate`, `getaddressbalance`, `getaddressutxos`,
 `getaddresstxids`, `getrawtransaction`, `getrawmempool`, `getblockchaininfo`). A test that only
-compared Zaino with itself would still pass if both sides were wrong in the same way.
+compared Zingod with itself would still pass if both sides were wrong in the same way.
 
 **The branches differ in content.** Branch A is mined with an Orchard coinbase
 (`mine_to(Pool::Orchard)`), so every block appends shielded commitments. Branch B is mined to
@@ -29,9 +29,9 @@ non-finalized seam sits inside the fixture, so boundary cases land exactly on `d
 `depth + 1`.
 
 **Wait on height and hash.** `indexer.wait_for_tip` matches both and polls through UNAVAILABLE.
-Waiting on height alone passes while Zaino still serves the losing branch.
+Waiting on height alone passes while Zingod still serves the losing branch.
 
-**Down means frozen.** To keep Zaino away while the validator reorgs, tests `freeze` the pod
+**Down means frozen.** To keep Zingod away while the validator reorgs, tests `freeze` the pod
 (SIGSTOP), never just kill it: kubelet restarts a first crash immediately, so a killed zainod can
 be back before the reorg lands. `thaw` resumes the same process; `kill` after `freeze` restarts it.
 
@@ -51,10 +51,10 @@ Shapes are pinned first at unit level in `packages/zaino-nfs` (`src/nfs_core/mod
 | C7 | Flip-flopping A ↔ B repeatedly serves each branch byte-identically every time | `round_trip::flip_flopping_between_two_branches_serves_each_byte_identically` |
 | C8 | Concurrent reader: one branch per response, ranges link, only error = UNAVAILABLE, tip never below the fork parent, a replaced branch never returns | `readers::readers_see_one_branch_at_a_time_through_a_reorg` |
 | C9 | Durable data never rewritten: finalized height monotone, durable blocks unchanged | `window::deepest_legal_reorg_never_rewrites_durable_data` |
-| C10 | Reorg deeper than `finalised_depth` halts Zaino; it never serves again | `window::reorg_below_the_window_halts_instead_of_serving`, `restart::reorg_below_durable_while_down_halts_on_restart` |
+| C10 | Reorg deeper than `finalised_depth` halts Zingod; it never serves again | `window::reorg_below_the_window_halts_instead_of_serving`, `restart::reorg_below_durable_while_down_halts_on_restart` |
 | C11 | Tip retreat with no replacement block is followed, down to the durable boundary | `reorg_shapes` cases `retreat`, `retreat_onto_the_durable_tip`; `transactions` case `remined_at_the_same_height` |
 | C12 | `zaino_reorgs_total` = 0 from boot, +1 per rollback | `reorg_shapes`, `round_trip`, `stall` |
-| C13 | Restart after a reorg serves identically; a reorg while Zaino is down is followed on restart | `restart::restart_after_a_reorg_serves_identically`, `restart::reorg_while_down_is_followed_on_restart` |
+| C13 | Restart after a reorg serves identically; a reorg while Zingod is down is followed on restart | `restart::restart_after_a_reorg_serves_identically`, `restart::reorg_while_down_is_followed_on_restart` |
 | C14 | `GetMempoolStream` ends when a reorg moves the tip, including at the same height | `mempool::mempool_stream_ends_when_a_reorg_moves_the_tip` |
 | C15 | Tx mined only on an orphan leaves every index (lookup, nullifier, address rows = zebrad's); rebroadcast, it returns on the first block after B | `transactions::orphaned_transaction_leaves_every_index_and_returns_where_remined` |
 | C16 | Reorg across NU6.3 activation serves the validator's blocks, trees and branch id on both sides | `activation::reorg_across_nu6_3_activation_matches_the_validator` |
@@ -66,11 +66,11 @@ Shapes are pinned first at unit level in `packages/zaino-nfs` (`src/nfs_core/mod
 - `invalidateblock` drops the losing branch from zebrad entirely, so zebrad never holds a side
   chain to compare against. A natural side chain would need two miners and a partition.
 - `GetSubtreeRoots` across a reorg needs 2¹⁶ commitments, too many for a regtest fixture.
-- zebrad never re-admits transactions from orphaned blocks, and Zaino mirrors its mempool. C15
+- zebrad never re-admits transactions from orphaned blocks, and Zingod mirrors its mempool. C15
   rebroadcasts explicitly, the way a wallet would.
 
 ## Wallets
 
 C15 uses a wallet only to build the shielded spend (zebrad has no wallet RPCs). A wallet's own
-reorg handling tests the wallet library, not Zaino; wallet-through-Zaino behaviour belongs in
+reorg handling tests the wallet library, not Zingod; wallet-through-Zingod behaviour belongs in
 `live-tests/e2e`.

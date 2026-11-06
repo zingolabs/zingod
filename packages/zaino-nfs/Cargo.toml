@@ -7,7 +7,7 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
-description = "Zaino's non-finalized state: the tip overlay, one folded node per block above the durable views"
+description = "Zingod's non-finalized state: the tip overlay, one folded node per block above the durable views"
 
 [dependencies]
 imbl.workspace = true

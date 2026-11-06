@@ -1,4 +1,4 @@
-# Zaino architecture
+# Zingod architecture
 
 How `zainod` turns a Zcash chain into the lightwalletd gRPC service, and why it is built this way.
 Crate APIs live in each crate's `usage.md`, the per-method RPC table in
@@ -10,9 +10,9 @@ Crate APIs live in each crate's `usage.md`, the per-method RPC table in
 
 - **The validator** (zebrad, zakura) owns consensus: valid blocks, valid transactions, the mempool.
 - **The wallet** owns keys.
-- **Zaino** owns every answer *derived* from the chain.
+- **Zingod** owns every answer *derived* from the chain.
 
-Data a validator needs for consensus stays there and is not copied; everything derived is a Zaino
+Data a validator needs for consensus stays there and is not copied; everything derived is a Zingod
 index and never falls back to a validator. So:
 
 - Block, tree-state and transparent-address methods come from an index or not at all. A disabled
@@ -23,11 +23,11 @@ index and never falls back to a validator. So:
   checked against the hash our indexes hold (which does not cover v5 proofs and signatures).
   `GetTaddressTransactions` works the same way: the
   index names the txids, `GetTransaction`'s path supplies the bytes.
-- Zaino does not validate transactions. That would be a second mempool verifier (proofs,
-  nullifiers, scripts, conflicts) tracking every network upgrade. Validators decide; Zaino checks
+- Zingod does not validate transactions. That would be a second mempool verifier (proofs,
+  nullifiers, scripts, conflicts) tracking every network upgrade. Validators decide; Zingod checks
   only what the bytes, the next block and its own UTXO set decide (§5).
 
-The principle behind the rest: **verify what Zaino can, trust validators for as little as
+The principle behind the rest: **verify what Zingod can, trust validators for as little as
 possible, take everything else from as many peers as possible.**
 
 ## 2. The map
@@ -72,7 +72,7 @@ folded on both paths: in RAM by the NFS, and by its writer once finalized. When 
 
 A **trusted validator** is one the operator configured (`[[trusted_validators]]`). A **peer** is
 any node on the p2p network: discovered, unauthenticated, free to multiply. Nothing a peer says
-counts until Zaino has checked it.
+counts until Zingod has checked it.
 
 | Need                    | Trusted validators            | Peers                                  | Check                                     |
 | ----------------------- | ----------------------------- | -------------------------------------- | ----------------------------------------- |
@@ -88,8 +88,8 @@ counts until Zaino has checked it.
 **Why peers never decide the tip.** A peer count proves nothing an attacker cannot buy: anyone can
 run ninety. Proof of work costs real mining however many peers present it. So peers are safe
 sources of headers and of anything checkable against them, and weak sources of claims. Two claims
-are taken from peers anyway, so Zaino keeps serving with every trusted validator down: finality and
-mempool admission. Both count only outbound peers (Zaino chose them) spread over more than 5
+are taken from peers anyway, so Zingod keeps serving with every trusted validator down: finality and
+mempool admission. Both count only outbound peers (Zingod chose them) spread over more than 5
 netgroups (/16 IPv4, /32 IPv6; one operator ≈ one netgroup).
 
 ## 4. The best chain
@@ -124,7 +124,7 @@ the NFS, the finalized path and the `GrpcSnapshot` publisher read.
 ### Finality
 
 A header proves work, not that its block's transactions are valid. A finalized block is never reorged
-(the indexes hold it on disk), so finality is where Zaino stops being able to change its mind.
+(the indexes hold it on disk), so finality is where Zingod stops being able to change its mind.
 
 Every header node records its **witnesses**: who once had that block on its best chain, and so
 every ancestor too, for good. Each block carries all of its own accounting; nothing about it is
@@ -184,7 +184,7 @@ peers, once, so silence means nothing.
 `SendTransaction` asks one trusted validator for a **verdict without a broadcast**, answers the
 wallet from it, then **relays through the peers** and watches the transaction spread. Relaying
 every wallet transaction through the same validators would tell any observer which transactions
-came through Zaino, and let one validator censor every wallet behind it. The relay follows
+came through Zingod, and let one validator censor every wallet behind it. The relay follows
 Dandelion++'s originator with its fail-safe timer.
 
 ```text
@@ -201,7 +201,7 @@ unchecked: Ok at the first acceptance (trusted Ok | any trusted listing | peer q
            never accepted → that trusted push is the verdict; else UNAVAILABLE
 ```
 
-- `checkadmission` (Zaino's zebra fork) runs `sendrawtransaction`'s checks, the fee policy and
+- `checkadmission` (Zingod's zebra fork) runs `sendrawtransaction`'s checks, the fee policy and
   mempool conflicts included, without admitting or relaying. It goes to a holder of the verified
   best only (a validator behind it refuses what spends a fresh output). A validator without it
   (zcashd, stock zebrad) answers `-32601`: never a failure, the next holder is asked. A refusal's
@@ -263,7 +263,7 @@ one and reads only it, so no answer mixes two moments.
 
 ### `GetMempoolStream`
 
-The protocol says "close the stream when a new block is mined"; Zaino makes that exact. A stream
+The protocol says "close the stream when a new block is mined"; Zingod makes that exact. A stream
 is bound to the served tip's hash: it opens with the servable mempool, sends each new transaction
 once (every message `height: 0`, never one mined in a block the served tip extends), and ends `OK`
 once the served tip moves, never on an empty mempool. It ends only after the `GrpcSnapshot`

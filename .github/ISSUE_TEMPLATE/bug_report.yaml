@@ -10,14 +10,14 @@ body:
         **Before submitting**, please check if a similar issue already exists.
 
   # Security gate — do NOT remove.
-  # Vulnerabilities must be reported privately via https://github.com/zingolabs/zaino/security
+  # Vulnerabilities must be reported privately via https://github.com/zingolabs/zingod/security
   - type: checkboxes
     id: not_a_vulnerability
     attributes:
       label: Security check
       description: >
         If this is a security vulnerability, **stop here** and
-        [report it privately](https://github.com/zingolabs/zaino/security) instead.
+        [report it privately](https://github.com/zingolabs/zingod/security) instead.
         Public issues must not contain vulnerability details.
       options:
         - label: This issue is **not** a security vulnerability.
@@ -27,7 +27,7 @@ body:
     id: usage
     attributes:
       label: Usage mode
-      description: How are you using Zaino?
+      description: How are you using Zingod?
       options:
         - zainod (running the daemon)
         - Library integration (using zaino-* crates)
@@ -69,11 +69,11 @@ body:
       label: Environment
       description: |
         Please include:
-        - Zaino version or commit hash
+        - Zingod version or commit hash
         - zebrad version
         - OS and platform
       placeholder: |
-        Zaino: v0.x.x or commit abc123
+        Zingod: v0.x.x or commit abc123
         zebrad: 6.2.3
         OS: Linux x86_64 / macOS ARM64
     validations:

@@ -1,5 +1,5 @@
 // zebrad's indexer service: zebra main + `GetBlockRange` (elicbarbieri/zebra
-// `perf/indexer-block-range`), `zebra-rpc/proto/indexer.proto` (MIT OR Apache-2.0). Zaino is a
+// `perf/indexer-block-range`), `zebra-rpc/proto/indexer.proto` (MIT OR Apache-2.0). Zingod is a
 // client (push streams, block fetch); tests serve it.
 syntax = "proto3";
 package zebra.indexer.rpc;

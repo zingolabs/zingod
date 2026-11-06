@@ -1,10 +1,10 @@
 blank_issues_enabled: true
 contact_links:
   - name: Security Vulnerability
-    url: https://github.com/zingolabs/zaino/security
+    url: https://github.com/zingolabs/zingod/security
     about: Found a security vulnerability? Report it privately — do NOT open a public issue.
   - name: Questions & Discussion
-    url: https://github.com/zingolabs/zaino/discussions
+    url: https://github.com/zingolabs/zingod/discussions
     about: Ask questions or start a discussion (if Discussions is enabled)
   - name: Zcash Community Forum
     url: https://forum.zcashcommunity.com/

@@ -49,7 +49,7 @@ ignore_conventional_commits = true
 
 [github]
 owner = "zingolabs"
-repo = "zaino"
+repo = "zingod"
 
 [[workflows]]
 name = "document-change"

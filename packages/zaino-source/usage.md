@@ -1,6 +1,6 @@
 # `zaino-source` — usage
 
-`ChainDataSource`: every question Zaino asks one trusted validator, one trait, declared in domain
+`ChainDataSource`: every question Zingod asks one trusted validator, one trait, declared in domain
 vocabulary (`zaino-primitives` + its own reply types), each method with its own domain error,
 nothing about the transport. Each method, its JSON-RPC call and its answer: the
 `ChainDataSource` rustdoc (`chain_data_source.rs`). Blocks come back decoded once, from consensus
@@ -12,7 +12,7 @@ else of its inner legacy client. Tests drive the real legacy client against
 [`MockValidator`](#testing-mockvalidator).
 
 What a validator reports about itself (`BlockchainInfo`, `NodeRelease` / `EndOfService`,
-`PeerInfo`) is this crate's, beside its parser. Only fields Zaino reads are parsed, so an upgrade
+`PeerInfo`) is this crate's, beside its parser. Only fields Zingod reads are parsed, so an upgrade
 this build does not know is skipped, never a failed poll. `BlockchainInfo::schedule()` refuses a
 regtest schedule out of protocol order or without Sapling (`ScheduleError`).
 
@@ -113,7 +113,7 @@ answers are tagged with the tip read beside them); the chain view then asks
 The `testing` feature (always on for this crate's own tests; enable it from `[dev-dependencies]`
 only) holds the one chain builder every test below the live suite takes its blocks, headers,
 fees, mempool and validators from. Every transaction is real consensus bytes written by
-librustzcash; every block handed out is `decode_block` of its own bytes and passes Zaino's own
+librustzcash; every block handed out is `decode_block` of its own bytes and passes Zingod's own
 checks.
 
 ```rust,ignore
@@ -204,7 +204,7 @@ tests.
 ## Testing: `MockValidator`
 
 One simulated zebrad over a `MockChain`, answering zebrad's JSON-RPC as bytes. A test reaches it
-through Zaino's own client, so every test above it runs the production request builder,
+through Zingod's own client, so every test above it runs the production request builder,
 envelope, batching, parsers and error classification:
 
 ```rust,ignore

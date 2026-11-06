@@ -11,14 +11,14 @@ network = "testnet"
 # - legacy_rpc = JSON-RPC for everything (zebrad or zcashd); blocks arrive as hex inside JSON
 # - grpc = blocks over zebrad's indexer gRPC (GetBlock, GetBlockRange) as stored bytes, no hex
 #   or JSON; everything else over JSON-RPC. Needs each validator's indexer_address and a zebrad
-#   serving GetBlockRange: Zaino's zebra fork only (elicbarbieri/zebra perf/indexer-block-range)
+#   serving GetBlockRange: Zingod's zebra fork only (elicbarbieri/zebra perf/indexer-block-range)
 # validator_client = "grpc"
 
 # Admin listener (/metrics, /livez, /readyz). Omit listen_address to disable.
 # [metrics]
 # listen_address = "127.0.0.1:9999"
 
-# Validators Zaino trusts (Zebra JSON-RPC), at least one; no vote (`priority` orders who is asked)
+# Validators Zingod trusts (Zebra JSON-RPC), at least one; no vote (`priority` orders who is asked)
 # - tip = their most-work header (trusted: zebra validated it), served while any of them holds it
 # - one listing admits a mempool transaction; submission: see [submission]
 # - 2+ = survives one going down (no vote: more never weakens it)
@@ -33,7 +33,7 @@ jsonrpc_address = "127.0.0.1:18232"
 # connect_timeout_secs = 2
 # Silence before a request fails, never total duration (raise for a slow or lossy link)
 # read_timeout_secs = 30
-# Link budget to this validator (zaino never exceeds it): at least 5 connections, one for the poll,
+# Link budget to this validator (Zingod never exceeds it): at least 5 connections, one for the poll,
 # one reserved per lane (control, interactive, bulk) + one shared, the rest to whichever lane
 # waits
 # max_connections = 32
@@ -66,12 +66,12 @@ propagation_threshold_secs = 15
 # Relays per transaction at most; without a check, the wallet is answered at the first acceptance
 max_attempts = 4
 
-# Zaino's own peers on the Zcash p2p network (zebra-network), off by default: headers and blocks
+# Zingod's own peers on the Zcash p2p network (zebra-network), off by default: headers and blocks
 # (checked by proof of work and merkle root: the tip keeps up while every trusted validator is
 # down; finality too, once peers in more than 5 netgroups carry the chain), each peer's mempool
-# polled (a transaction > 2/3 of them list from > 5 netgroups is served after Zaino's consensus
+# polled (a transaction > 2/3 of them list from > 5 netgroups is served after Zingod's consensus
 # checks: needs index.compact_block), and SendTransaction relays (zebra's own, to a third of the
-# peers per attempt; then one trusted validator if still unseen). Zaino serves no peer (listener
+# peers per attempt; then one trusted validator if still unseen). Zingod serves no peer (listener
 # on loopback, no services advertised).
 # [p2p]
 # enabled = true

@@ -1,5 +1,5 @@
 {
-  description = "Zaino — Zcash indexer serving light wallets over lightwalletd-compatible gRPC";
+  description = "Zingod — Zcash indexer serving light wallets over lightwalletd-compatible gRPC";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";

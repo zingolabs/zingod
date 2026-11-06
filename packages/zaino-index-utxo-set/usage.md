@@ -24,7 +24,7 @@ created and spent in one block writes neither row
 gone, a block's fees cannot be re-derived later, so each block's fees are stored
 in `fees` and read back for a held height.
 
-- `outputs` is the only map in Zaino that deletes. Its deletes stay simple: an
+- `outputs` is the only map in Zingod that deletes. Its deletes stay simple: an
   outpoint is inserted once and removed at most once, so a removal cancels its
   insert in whichever order the engine merges them.
 - Keeping only unspent outputs keeps the set small enough to stay in the page

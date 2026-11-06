@@ -1,6 +1,6 @@
 # zaino-persistence
 
-Storage for every Zaino index. It has two halves: the **port** (`port.rs`, over the tables
+Storage for every Zingod index. It has two halves: the **port** (`port.rs`, over the tables
 declared in `schema.rs` and the per-block delta in `changes.rs`), the small set of traits an index
 is allowed to use, and **`DiskEngine`**, the one engine behind it. Read this if you
 are writing or reviewing an index, or debugging what is on disk.
@@ -73,7 +73,7 @@ functions beside a golden-bytes test). The engine sees bytes. The details that b
   item of the wrong size, a tip that does not advance, a key inserted twice, a table the engine
   cannot hold (for `DiskEngine`, see [its LSM's limits](#on-disk)).
 - **The engine knows no owner.** `Schema::name()` is the store's metric (`index` label) and log
-  label; `name`, `FORMAT` and `scope` are written into its manifest. Zaino's names and network
+  label; `name`, `FORMAT` and `scope` are written into its manifest. Zingod's names and network
   scopes come from `zaino_sync::schema`.
 
 ## Deletes
@@ -141,7 +141,7 @@ fixed-stride. The filter shards on 8 key bytes, so a map filters at least 8 (its
 
 ## The commit and crash contract
 
-Everything Zaino stores is derived from the chain, so the worst a failure can cost is a resync. The
+Everything Zingod stores is derived from the chain, so the worst a failure can cost is a resync. The
 engine therefore never repairs: it either opens a state it can prove, or refuses.
 
 A commit:

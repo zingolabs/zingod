@@ -32,4 +32,4 @@ Per entry:
 - `validator_client = "grpc"` (default `legacy_rpc`) fetches blocks over each validator's
   `indexer_address` as raw bytes instead of hex inside JSON, everything else over JSON-RPC. Every
   entry then needs `indexer_address`, and a zebrad serving the indexer's `GetBlockRange`
-  (Zaino's zebra fork).
+  (Zingod's zebra fork).

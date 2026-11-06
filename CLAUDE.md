@@ -1,4 +1,4 @@
-# Zaino AI Contributor Guidelines
+# Zingod AI Contributor Guidelines
 
 Terms: [`CONTEXT.md`](CONTEXT.md) is the glossary; names, docs and logs use its words.
 

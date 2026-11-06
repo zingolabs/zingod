@@ -1,6 +1,6 @@
 # `zaino-peers` — usage
 
-Zaino's p2p layer ([architecture §3](../../docs/architecture.md#3-sources-and-what-each-is-trusted-for)): zebra-network's peer set,
+Zingod's p2p layer ([architecture §3](../../docs/architecture.md#3-sources-and-what-each-is-trusted-for)): zebra-network's peer set,
 embedded. Peers are discovered and unauthenticated, so nothing here votes: every
 header, block and transaction handed out is identified by what zebra recomputes
 from its bytes, never by what a peer claimed.
@@ -32,7 +32,7 @@ multi-thread tokio runtime.
 
 `PeerNetwork::start(config)` wraps zebra-network's `init`:
 
-- zebra always opens a listener: `127.0.0.1:0`, since Zaino serves no peer. The inbound service answers every request with nothing (`Nil`)
+- zebra always opens a listener: `127.0.0.1:0`, since Zingod serves no peer. The inbound service answers every request with nothing (`Nil`)
 - `initial_peers` empty uses the network's DNS seeders; a list replaces them
   (regtest keeps loopback addresses only, as zebrad does)
 - `peer_target` (`DEFAULT_PEER_TARGET`, 8) is zebra's initial outbound target. Each
@@ -43,7 +43,7 @@ multi-thread tokio runtime.
 It returns once the seeds are dialed and crawled once (`init` awaits one `getaddr`:
 seconds, up to zebra's crawl timeout for a seed that never answers).
 
-Zaino advertises no services (`PeerServices::empty()` to `init`), so it never claims to
+Zingod advertises no services (`PeerServices::empty()` to `init`), so it never claims to
 serve blocks, and answers peers' requests with nothing. Zebra still admits it:
 they require `NODE_NETWORK` only from peers they dial themselves, and only while syncing.
 

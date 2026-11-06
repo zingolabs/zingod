@@ -2,7 +2,7 @@
 name = "zainod"
 publish.workspace = true
 version.workspace = true
-description = "The Zaino indexer daemon."
+description = "The Zingod indexer daemon."
 authors = { workspace = true }
 repository = { workspace = true }
 homepage = { workspace = true }

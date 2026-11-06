@@ -25,7 +25,7 @@ smallest one: `zaino-internal-block-hash-to-height/src/writer.rs`.
 
 ## `IndexKind` and `schema`
 
-`IndexKind` = every index Zaino folds; `ALL` = fold order, `name()` = its one spelling (metric
+`IndexKind` = every index Zingod folds; `ALL` = fold order, `name()` = its one spelling (metric
 label, `/status`, task, default directory, index-snapshot entry). Each index crate declares its
 store as `zaino_sync::schema(IndexKind::X, FORMAT, network, TABLES)`: the persistence engine gets
 `name()` + the network's scope (`main` / `test` / `regtest`) and refuses a directory written under

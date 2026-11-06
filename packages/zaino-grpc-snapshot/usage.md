@@ -1,6 +1,6 @@
 # `zaino-grpc-snapshot` — usage
 
-One value for everything Zaino serves
+One value for everything Zingod serves
 ([architecture §8](../../docs/architecture.md#8-serving-one-grpcsnapshot)): the chain view's latest,
 the NFS's latest and a mempool feed keyed to the served tip, published together as one
 `Arc<GrpcSnapshot>`. Every read of chain, index, mempool or validator state, by a route, a probe, a

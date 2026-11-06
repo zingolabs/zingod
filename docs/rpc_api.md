@@ -1,13 +1,13 @@
-# Zaino's RPC surface
+# Zingod's RPC surface
 
 `zainod` serves the lightwalletd-compatible `CompactTxStreamer` gRPC service defined by the
 [LightWallet Protocol](https://github.com/zcash/lightwallet-protocol/blob/main/walletrpc/service.proto)
 on `serve.grpc_listen_address` (default `127.0.0.1:8137`), HTTP/2, plaintext unless
-`[serve.tls]` is set. Zaino serves no JSON-RPC: node queries go to the validator's own.
+`[serve.tls]` is set. Zingod serves no JSON-RPC: node queries go to the validator's own.
 
 ## Where each method is answered
 
-Derived answers come from a Zaino index, never the validator; consensus objects a validator
+Derived answers come from a Zingod index, never the validator; consensus objects a validator
 already stores are asked of it ([architecture §1](./architecture.md#1-who-owns-what)).
 
 | Method                                                  | Answered by                                                                                                                                    |
@@ -54,7 +54,7 @@ with height 0, the wire's only "no height" value.
 
 `SendTransaction` reports a rejection in the `SendResponse` itself, as lightwalletd does: gRPC
 `OK`, `errorCode` = the validator's own JSON-RPC code and `errorMessage` = its message verbatim
-(`-22` for bytes that do not parse, `-25` for the expiry and consensus-branch prechecks Zaino
+(`-22` for bytes that do not parse, `-25` for the expiry and consensus-branch prechecks Zingod
 runs itself, as zebrad would answer them). A wallet has to tell "the network said no" from "the
 network is unreachable", and zingolib matches the message text ("transaction already exists in
 mempool", …). zebrad's `-1` answers that judge the transaction count as rejections; its other
@@ -114,6 +114,6 @@ answerable and none is silently pruned.
   `service.proto`, so both are `UNIMPLEMENTED`; no client calls them
   ([client requirements](./client-requirements.md)).
 - `CompactTx.fee` is filled, unlike lightwalletd: in a mined block from the utxo-set index, in
-  `GetMempoolTx` the fee a trusted validator listed or the one Zaino computed for a peer-quorum
+  `GetMempoolTx` the fee a trusted validator listed or the one Zingod computed for a peer-quorum
   admission. It is 0 for a coinbase, for our own send before anything lists it, and for a fee of
   2^32 zatoshis or more (the field is a `uint32` with no presence bit).

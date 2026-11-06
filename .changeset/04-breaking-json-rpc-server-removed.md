@@ -2,7 +2,7 @@
 default: major
 ---
 
-# `zainod`: Zaino serves no JSON-RPC
+# `zainod`: Zingod serves no JSON-RPC
 
 The JSON-RPC server, its cookie authentication and port 8237 are gone, with every method it
 served (`getblock`, `getrawtransaction`, `z_gettreestate`, `getaddressdeltas`, `getblockdeltas`,
