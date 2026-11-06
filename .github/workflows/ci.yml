@@ -14,6 +14,14 @@ concurrency:
 permissions:
   contents: read
 
+# - rust-cache = registry + dependency artifacts (workspace crates excluded by design)
+# - sccache (GHA cache backend) = compiled objects by content hash, workspace crates included
+# - CARGO_INCREMENTAL=0: sccache skips incremental artifacts; rust-cache sets it too
+env:
+  RUSTC_WRAPPER: sccache
+  SCCACHE_GHA_ENABLED: "true"
+  CARGO_INCREMENTAL: "0"
+
 # every run step inside the flake devshell (flake.lock pins all tools)
 defaults:
   run:
@@ -26,6 +34,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/devshell
+      - uses: mozilla-actions/sccache-action@v0.0.11
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -40,6 +49,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/devshell
+      - uses: mozilla-actions/sccache-action@v0.0.11
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -55,6 +65,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/devshell
+      - uses: mozilla-actions/sccache-action@v0.0.11
 
       - uses: Swatinem/rust-cache@v2
 
