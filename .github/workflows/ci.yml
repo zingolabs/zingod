@@ -17,10 +17,13 @@ permissions:
 # - rust-cache = registry + dependency artifacts (workspace crates excluded by design)
 # - sccache (GHA cache backend) = compiled objects by content hash, workspace crates included
 # - CARGO_INCREMENTAL=0: sccache skips incremental artifacts; rust-cache sets it too
+# - CARGO_PROFILE_TEST_DEBUG: backtrace line numbers only (full DWARF = the link time and half
+#   the cache; `[profile.test] debug = true` stays for local builds)
 env:
   RUSTC_WRAPPER: sccache
   SCCACHE_GHA_ENABLED: "true"
   CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_TEST_DEBUG: line-tables-only
 
 # every run step inside the flake devshell (flake.lock pins all tools)
 defaults:
