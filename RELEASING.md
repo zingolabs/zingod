@@ -3,10 +3,11 @@
 Every crate shares one version (`[workspace.package] version` in `Cargo.toml`), and
 [Knope](https://knope.tech) (`knope.toml`, in the nix devshell) does the release work. Each PR
 records its changes as change files in `.changeset/`. A release turns them into the version bump,
-the `CHANGELOG.md` section, the GitHub release and the `vX.Y.Z` tag. Pushing the tag runs the one
-release workflow, `.github/workflows/release.yaml`, which builds the `zingod` image and pushes it to
-Docker Hub as `zingodevops/zingod:X.Y.Z`, plus `zingodevops/zingod:latest` unless it is a
-pre-release.
+the `CHANGELOG.md` section and the `vX.Y.Z` tag, all local git operations: Knope talks to no API
+and needs no token. Pushing the tag runs the one release workflow,
+`.github/workflows/release.yaml`, which creates the GitHub release from that CHANGELOG section,
+then builds the `zingod` image and pushes it to Docker Hub as `zingodevops/zingod:X.Y.Z`, plus
+`zingodevops/zingod:latest` unless it is a pre-release.
 
 ## Every PR: a change file
 
@@ -40,8 +41,8 @@ change file.
 
 ## Release
 
-From the devshell, with a GitHub token that can create releases on `zingolabs/zingod`. Every
-command takes `--dry-run`: run it that way first.
+From the devshell, as someone the `v*` tag ruleset lets push a tag (repository Maintain or
+Admin). Every command takes `--dry-run`: run it that way first.
 
 ```bash
 # 1. newest main commit whose CI passed
@@ -50,10 +51,11 @@ SHA=$(gh run list -w ci.yml -b main -s success -L1 --json headSha -q '.[0].headS
 # 2. release branch at that commit
 git fetch origin && git switch -c release/1.0 "$SHA" && git push -u origin release/1.0
 
-# 3. bump + CHANGELOG.md from .changeset/, commit, push, GitHub release + tag
+# 3. bump + CHANGELOG.md from .changeset/, commit, tag v1.0.0, push both (the tag push
+#    runs release.yaml: GitHub release + image)
 #    (1.0.0 only: the version is already set, so `--override-version 1.0.0` stops Knope
 #    bumping it to 2.0.0 for the breaking change files)
-GITHUB_TOKEN=$(gh auth token) knope release --override-version 1.0.0
+knope release --override-version 1.0.0
 
 # 4. carry the bump and the consumed change files back to main (needs one approval)
 gh pr create -B main -f && gh pr merge --auto --merge

@@ -47,17 +47,15 @@ extra_changelog_sections = [{ name = "Internal", types = ["internal"] }]
 [changes]
 ignore_conventional_commits = true
 
-[github]
-owner = "zingolabs"
-repo = "zingod"
-
 [[workflows]]
 name = "document-change"
 
 [[workflows.steps]]
 type = "CreateChangeFile"
 
-# Bump + changelog from `.changeset/`, commit, push, then the GitHub release + `v$version` tag
+# Bump + changelog from `.changeset/`, commit, tag `v$version`, push both
+# - no forge configured → `Release` = the git tag only (no token); the tag push runs
+#   release.yaml, which creates the GitHub release from CHANGELOG.md and publishes the image
 [[workflows]]
 name = "release"
 
@@ -69,8 +67,8 @@ type = "Command"
 command = "git commit -m \"chore: release $version\""
 
 [[workflows.steps]]
-type = "Command"
-command = "git push"
+type = "Release"
 
 [[workflows.steps]]
-type = "Release"
+type = "Command"
+command = "git push --follow-tags"
