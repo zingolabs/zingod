@@ -2,7 +2,7 @@
 
 Live tests for everything above `tip − finalised_depth`: the non-finalized state, reorg
 handling, the served snapshot tip, and every RPC whose answer depends on the tip. Each test runs
-a regtest zebrad and a zainod built from this tree on the ztest Kubernetes harness.
+a regtest zebrad and a zingod built from this tree on the ztest Kubernetes harness.
 
 ## How the tests are built
 
@@ -32,10 +32,10 @@ non-finalized seam sits inside the fixture, so boundary cases land exactly on `d
 Waiting on height alone passes while Zingod still serves the losing branch.
 
 **Down means frozen.** To keep Zingod away while the validator reorgs, tests `freeze` the pod
-(SIGSTOP), never just kill it: kubelet restarts a first crash immediately, so a killed zainod can
+(SIGSTOP), never just kill it: kubelet restarts a first crash immediately, so a killed zingod can
 be back before the reorg lands. `thaw` resumes the same process; `kill` after `freeze` restarts it.
 
-Shapes are pinned first at unit level in `packages/zaino-nfs` (`src/nfs_core/model_tests.rs`,
+Shapes are pinned first at unit level in `packages/zingod-nfs` (`src/nfs_core/model_tests.rs`,
 `src/nfs/tests.rs`), which run in seconds. This suite proves them against a real validator.
 
 ## Contracts
@@ -53,7 +53,7 @@ Shapes are pinned first at unit level in `packages/zaino-nfs` (`src/nfs_core/mod
 | C9 | Durable data never rewritten: finalized height monotone, durable blocks unchanged | `window::deepest_legal_reorg_never_rewrites_durable_data` |
 | C10 | Reorg deeper than `finalised_depth` halts Zingod; it never serves again | `window::reorg_below_the_window_halts_instead_of_serving`, `restart::reorg_below_durable_while_down_halts_on_restart` |
 | C11 | Tip retreat with no replacement block is followed, down to the durable boundary | `reorg_shapes` cases `retreat`, `retreat_onto_the_durable_tip`; `transactions` case `remined_at_the_same_height` |
-| C12 | `zaino_reorgs_total` = 0 from boot, +1 per rollback | `reorg_shapes`, `round_trip`, `stall` |
+| C12 | `zingod_reorgs_total` = 0 from boot, +1 per rollback | `reorg_shapes`, `round_trip`, `stall` |
 | C13 | Restart after a reorg serves identically; a reorg while Zingod is down is followed on restart | `restart::restart_after_a_reorg_serves_identically`, `restart::reorg_while_down_is_followed_on_restart` |
 | C14 | `GetMempoolStream` ends when a reorg moves the tip, including at the same height | `mempool::mempool_stream_ends_when_a_reorg_moves_the_tip` |
 | C15 | Tx mined only on an orphan leaves every index (lookup, nullifier, address rows = zebrad's); rebroadcast, it returns on the first block after B | `transactions::orphaned_transaction_leaves_every_index_and_returns_where_remined` |

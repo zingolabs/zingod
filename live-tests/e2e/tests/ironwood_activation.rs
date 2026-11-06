@@ -1,6 +1,6 @@
 //! Wallet-observable predicates across a mid-chain Orchard → Ironwood boundary (NU6.3 at 6)
 //!
-//! - Schedule pinned once (`TestEnv` activation heights); validator, zainod, wallet adopt it
+//! - Schedule pinned once (`TestEnv` activation heights); validator, zingod, wallet adopt it
 //! - Ironwood-era cells: `wallet_to_validator.rs`; served-chain era composition:
 //!   `clientless/tests/compact_block_consistency.rs`
 //! - Hermetic only (public testnet: no pre-activation Orchard TAZ, cross-address restriction)

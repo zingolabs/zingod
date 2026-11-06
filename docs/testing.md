@@ -2,17 +2,17 @@
 
 Zingod has two kinds of test. The unit and model tests in `packages/*` run on the host with
 `cargo nextest run --workspace` and need no validator, although they are not network-free
-(`zaino-grpc`, for example, binds a loopback socket). Their blocks, headers and validators come
-from one builder, [`MockChain`](../packages/zaino-source/usage.md#testing-mockchain). The live
-tests in `live-tests/` run a deployed zainod against a real zebrad on Kubernetes, driven by
+(`zingod-grpc`, for example, binds a loopback socket). Their blocks, headers and validators come
+from one builder, [`MockChain`](../packages/zingod-source/usage.md#testing-mockchain). The live
+tests in `live-tests/` run a deployed zingod against a real zebrad on Kubernetes, driven by
 [ztest](https://github.com/zingolabs/ztest).
 
 | Set                              | What it covers                                                                     |
 | -------------------------------- | ---------------------------------------------------------------------------------- |
-| `live-tests/clientless`          | zainod's gRPC answers checked against the validator as oracle, with no wallet      |
-| `live-tests/e2e`                 | a real wallet syncing and sending through zainod's gRPC to a live validator        |
+| `live-tests/clientless`          | zingod's gRPC answers checked against the validator as oracle, with no wallet      |
+| `live-tests/e2e`                 | a real wallet syncing and sending through zingod's gRPC to a live validator        |
 | `live-tests/non-finalized-state` | reorgs forced on a regtest zebrad, checked across every index ([README](../live-tests/non-finalized-state/README.md)) |
-| `live-tests/sync`                | the long-running mainnet profiles `zaino_index_construction` and `zaino_index_crash_consistency` |
+| `live-tests/sync`                | the long-running mainnet profiles `zingod_index_construction` and `zingod_index_crash_consistency` |
 
 `live-tests/` is a standalone Cargo workspace, and `live-tests/sync/` a second one nested inside
 it, each with its own lock. The rules for writing live tests: [live-tests/CLAUDE.md](../live-tests/CLAUDE.md).
@@ -29,7 +29,7 @@ PROPTEST_CASES=5000 cargo nextest run --profile models
 
 `PROPTEST_MAX_SHRINK_ITERS` shrinks a failure harder and `PROPTEST_VERBOSE=1` prints each case.
 Raising `PROPTEST_CASES` across the whole workspace also scales
-`transactions_decode_to_their_source` (`zaino-source`), which is slow.
+`transactions_decode_to_their_source` (`zingod-source`), which is slow.
 
 A new model suite joins the profile by its name: its test path contains `model` or
 `random_histories`. Its oracle is written independently of the code under test, and moves the
@@ -39,13 +39,13 @@ case is saved and replays on every run: beside an integration test as
 
 ### Heavy run
 
-A change to `zaino-persistence`, `zaino-header-chain`, `zaino-nfs`, `zaino-grpc-snapshot` or
-`zaino-traffic` is done only once this passes for that crate. Each round runs the crate's whole
+A change to `zingod-persistence`, `zingod-header-chain`, `zingod-nfs`, `zingod-grpc-snapshot` or
+`zingod-traffic` is done only once this passes for that crate. Each round runs the crate's whole
 suite on fresh seeds, so the timing-sensitive tests (background merges, failed I/O, crash
 states) repeat alongside the models. Then the crates built on it run once:
 
 ```sh
-crate=zaino-persistence
+crate=zingod-persistence
 end=$((SECONDS + 180)); round=0
 while [ $SECONDS -lt $end ]; do
   round=$((round + 1))
@@ -76,8 +76,8 @@ ztest run --rerun latest -p clientless     # the last run's failures
 ztest run --no-cleanup -p clientless       # keep each test's namespace (pods, logs) to inspect
 
 cd sync                                    # now in live-tests/sync
-ztest sync start zaino_index_construction --watch
-ztest sync start zaino_index_crash_consistency
+ztest sync start zingod_index_construction --watch
+ztest sync start zingod_index_crash_consistency
 ```
 
 `ztest run` MUST be launched from `live-tests/` and `ztest sync` from `live-tests/sync/`: neither

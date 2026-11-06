@@ -15,7 +15,7 @@ use ztest::prelude::*;
 
 const READY: Duration = Duration::from_secs(180);
 const CONVERGE: Duration = Duration::from_secs(180);
-/// kubelet crash backoff (first restart immediate, 10 s after) + zainod reopen
+/// kubelet crash backoff (first restart immediate, 10 s after) + zingod reopen
 const RESTART: Duration = Duration::from_secs(120);
 const HALT_WINDOW: Duration = Duration::from_secs(90);
 const POLL: Duration = Duration::from_secs(1);
@@ -99,7 +99,7 @@ async fn reorg_while_down_is_followed_on_restart() -> Result<()> {
     pod.freeze().await?;
     let reorg = validator.reorg(ORPHANED, REPLACEMENT, Some(FILLER_ADDRESS)).await?;
     let restart = pod.kill_and_await_restart(RESTART).await?;
-    ensure!(restart.restart_count >= 1, "zainod restarted after the frozen reorg: {restart:?}");
+    ensure!(restart.restart_count >= 1, "zingod restarted after the frozen reorg: {restart:?}");
     indexer.wait_for_tip(reorg.tip, CONVERGE).await?;
     let (fork_parent, tip) = (u32::from(reorg.fork_parent.0), u32::from(reorg.tip.0));
 
@@ -112,16 +112,16 @@ async fn reorg_while_down_is_followed_on_restart() -> Result<()> {
         assert_eq!(
             Some(hash.to_string().as_str()),
             truth.as_str(),
-            "{height} hash: zaino vs zebrad"
+            "{height} hash: zingod vs zebrad"
         );
     }
     let empty = |tree: &str| if tree.is_empty() { "000000".to_owned() } else { tree.to_owned() };
     for height in fork_parent..=tip {
-        let zaino = indexer.get_tree_state(height.into()).await?;
+        let zingod = indexer.get_tree_state(height.into()).await?;
         let zebra = vrpc.call_value("z_gettreestate", json!([height.to_string()])).await?;
         let truth = zebra["ironwood"]["commitments"]["finalState"].as_str().unwrap_or_default();
-        let served = empty(&zaino.ironwood_tree);
-        assert_eq!(served, empty(truth), "ironwood tree at {height}: zaino vs zebrad");
+        let served = empty(&zingod.ironwood_tree);
+        assert_eq!(served, empty(truth), "ironwood tree at {height}: zingod vs zebrad");
     }
     for (_, hash) in &reorg.orphaned {
         let code = indexer.get_block_by_hash(*hash).await.err().and_then(|e| e.grpc_code());

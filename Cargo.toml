@@ -1,24 +1,24 @@
 [workspace]
 members = [
-    "packages/zaino-grpc",
-    "packages/zaino-grpc-snapshot",
-    "packages/zaino-index-compact-block",
-    "packages/zaino-index-tree-state",
-    "packages/zaino-index-transparent-address",
-    "packages/zaino-internal-block-hash-to-height",
-    "packages/zaino-internal-txid-location",
-    "packages/zaino-index-utxo-set",
-    "packages/zaino-chainview",
-    "packages/zaino-nfs",
-    "packages/zaino-header-chain",
-    "packages/zaino-persistence",
-    "packages/zaino-primitives",
-    "packages/zaino-sync",
-    "packages/zaino-source",
-    "packages/zainod",
-    "packages/zaino-proto",
-    "packages/zaino-peers",
-    "packages/zaino-traffic",
+    "packages/zingod-grpc",
+    "packages/zingod-grpc-snapshot",
+    "packages/zingod-index-compact-block",
+    "packages/zingod-index-tree-state",
+    "packages/zingod-index-transparent-address",
+    "packages/zingod-internal-block-hash-to-height",
+    "packages/zingod-internal-txid-location",
+    "packages/zingod-index-utxo-set",
+    "packages/zingod-chainview",
+    "packages/zingod-nfs",
+    "packages/zingod-header-chain",
+    "packages/zingod-persistence",
+    "packages/zingod-primitives",
+    "packages/zingod-sync",
+    "packages/zingod-source",
+    "packages/zingod",
+    "packages/zingod-proto",
+    "packages/zingod-peers",
+    "packages/zingod-traffic",
     # live-tests/ = standalone workspace (ztest harness, links no production crate)
 ]
 
@@ -26,14 +26,14 @@ members = [
 resolver = "2"
 
 [workspace.package]
-# Lockstep: every crate ships at this version (the `zaino-*` entries below match it)
+# Lockstep: every crate ships at this version (the `zingod-*` entries below match it)
 version = "0.11.0-alpha.6"
 authors = ["Zingo Lab Cyan"]
 repository = "https://github.com/zingolabs"
 homepage = "https://www.zingolabs.org/"
 edition = "2021"
 license = "Apache-2.0"
-# Never on crates.io (zainod ships as an image)
+# Never on crates.io (zingod ships as an image)
 publish = false
 
 
@@ -54,7 +54,7 @@ tokio = "1.38"
 tokio-util = "0.7"
 # Data-parallel commitment hashing (a fold runs on every core, not one blocking thread)
 rayon = "1.12"
-# zainod's allocator (musl's malloc serializes threads; image = Alpine)
+# zingod's allocator (musl's malloc serializes threads; image = Alpine)
 tikv-jemallocator = "0.7"
 
 # CLI
@@ -98,47 +98,47 @@ dirs = "6"
 # Test
 tempfile = "3.2"
 # Domain vocabulary (heights, hashes, blocks, transactions)
-zaino-primitives = { path = "packages/zaino-primitives", version = "0.11.0-alpha.6" }
-zaino-persistence = { path = "packages/zaino-persistence", version = "0.11.0-alpha.6" }
-zaino-sync = { path = "packages/zaino-sync", version = "0.11.0-alpha.6" }
+zingod-primitives = { path = "packages/zingod-primitives", version = "0.11.0-alpha.6" }
+zingod-persistence = { path = "packages/zingod-persistence", version = "0.11.0-alpha.6" }
+zingod-sync = { path = "packages/zingod-sync", version = "0.11.0-alpha.6" }
 # Non-finalized state: fetch, folds above the durable root, the finalized stream
-zaino-nfs = { path = "packages/zaino-nfs", version = "0.11.0-alpha.6" }
+zingod-nfs = { path = "packages/zingod-nfs", version = "0.11.0-alpha.6" }
 # Validated Header tree: most-work tip above a trusted anchor
-zaino-header-chain = { path = "packages/zaino-header-chain", version = "0.11.0-alpha.6" }
+zingod-header-chain = { path = "packages/zingod-header-chain", version = "0.11.0-alpha.6" }
 # Validator source: `ChainDataSource` port + its JSON-RPC and indexer-gRPC clients
-zaino-source = { path = "packages/zaino-source", version = "0.11.0-alpha.6" }
-zaino-proto = { path = "packages/zaino-proto", version = "0.11.0-alpha.6" }
-zaino-peers = { path = "packages/zaino-peers", version = "0.11.0-alpha.6" }
-zaino-traffic = { path = "packages/zaino-traffic", version = "0.11.0-alpha.6" }
-zaino-chainview = { path = "packages/zaino-chainview", version = "0.11.0-alpha.6" }
-zaino-grpc-snapshot = { path = "packages/zaino-grpc-snapshot", version = "0.11.0-alpha.6" }
-zaino-grpc = { path = "packages/zaino-grpc", version = "0.11.0-alpha.6" }
-# p2p layer (zaino-peers): zebra v7.0.0 (mainnet NU7) on the same librustzcash/orchard/sapling forks patched below
+zingod-source = { path = "packages/zingod-source", version = "0.11.0-alpha.6" }
+zingod-proto = { path = "packages/zingod-proto", version = "0.11.0-alpha.6" }
+zingod-peers = { path = "packages/zingod-peers", version = "0.11.0-alpha.6" }
+zingod-traffic = { path = "packages/zingod-traffic", version = "0.11.0-alpha.6" }
+zingod-chainview = { path = "packages/zingod-chainview", version = "0.11.0-alpha.6" }
+zingod-grpc-snapshot = { path = "packages/zingod-grpc-snapshot", version = "0.11.0-alpha.6" }
+zingod-grpc = { path = "packages/zingod-grpc", version = "0.11.0-alpha.6" }
+# p2p layer (zingod-peers): zebra v7.0.0 (mainnet NU7) on the same librustzcash/orchard/sapling forks patched below
 zebra-chain = { git = "https://github.com/elicbarbieri/zebra.git", rev = "ebabeee504850bb9dc0b9a76de158dbc68503220", version = "15.0.0" }
 zebra-network = { git = "https://github.com/elicbarbieri/zebra.git", rev = "ebabeee504850bb9dc0b9a76de158dbc68503220", version = "15.0.0" }
 zebra-test = { git = "https://github.com/elicbarbieri/zebra.git", rev = "ebabeee504850bb9dc0b9a76de158dbc68503220", version = "5.0.0" }
 # Height → gRPC-framed compact block, served as contiguous mmap spans
-zaino-index-compact-block = { path = "packages/zaino-index-compact-block", version = "0.11.0-alpha.6" }
+zingod-index-compact-block = { path = "packages/zingod-index-compact-block", version = "0.11.0-alpha.6" }
 # Block hash <-> height: the locator every by-hash request resolves through.
-zaino-internal-block-hash-to-height = { path = "packages/zaino-internal-block-hash-to-height", version = "0.11.0-alpha.6" }
+zingod-internal-block-hash-to-height = { path = "packages/zingod-internal-block-hash-to-height", version = "0.11.0-alpha.6" }
 # Txid -> mined location: where GetTransaction finds a mined transaction's block
-zaino-internal-txid-location = { path = "packages/zaino-internal-txid-location", version = "0.11.0-alpha.6" }
+zingod-internal-txid-location = { path = "packages/zingod-internal-txid-location", version = "0.11.0-alpha.6" }
 # Outpoint -> value: each transaction's fee for compact blocks
-zaino-index-utxo-set = { path = "packages/zaino-index-utxo-set", version = "0.11.0-alpha.6" }
+zingod-index-utxo-set = { path = "packages/zingod-index-utxo-set", version = "0.11.0-alpha.6" }
 # Height → commitment-tree state, subtree roots (any historical frontier, no hashing)
-zaino-index-tree-state = { path = "packages/zaino-index-tree-state", version = "0.11.0-alpha.6" }
+zingod-index-tree-state = { path = "packages/zingod-index-tree-state", version = "0.11.0-alpha.6" }
 # Transparent address → receives + their spends (two maps, composed per query)
-zaino-index-transparent-address = { path = "packages/zaino-index-transparent-address", version = "0.11.0-alpha.6" }
+zingod-index-transparent-address = { path = "packages/zingod-index-transparent-address", version = "0.11.0-alpha.6" }
 
 
 config = { version = "0.15", default-features = false, features = ["toml"] }
 # < 1.7 = librustzcash's `test-dependencies` strategies (rand 0.8)
 proptest = "1.6"
 arc-swap = "1.7.1"
-# TLS: ring provider only (both default to aws-lc-rs, banned in deny.toml)
-rustls = { version = "0.23.45", default-features = false, features = ["ring", "std", "tls12"] }
-tokio-rustls = { version = "0.26.6", default-features = false, features = ["ring", "tls12"] }
-rcgen = "0.14.10"
+# TLS: aws-lc-rs provider only (ring banned in deny.toml)
+rustls = { version = "0.23.45", default-features = false, features = ["aws_lc_rs", "std", "tls12"] }
+tokio-rustls = { version = "0.26.6", default-features = false, features = ["aws_lc_rs", "tls12"] }
+rcgen = { version = "0.14.10", default-features = false, features = ["aws_lc_rs", "pem"] }
 # Persistent collections: a published snapshot shares structure with the one it
 # came from rather than copying.
 imbl = "7.0"

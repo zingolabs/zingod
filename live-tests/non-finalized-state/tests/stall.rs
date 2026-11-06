@@ -54,7 +54,7 @@ async fn stalled_through_a_reorg_past_the_window_realigns_without_finalizing_orp
         assert_eq!(
             Some(hash.to_string().as_str()),
             truth.as_str(),
-            "{height} hash: zaino vs zebrad"
+            "{height} hash: zingod vs zebrad"
         );
     }
     for (height, hash) in &reorg.orphaned {
@@ -68,6 +68,6 @@ async fn stalled_through_a_reorg_past_the_window_realigns_without_finalizing_orp
     }
     let scrape = indexer.read(SCRAPE).await?;
     assert_eq!(scrape.counter_total(family::REORGS), Some(1), "realign counted as one rollback");
-    assert_eq!(scrape.height(family::BEST_TIP), Some(tip), "zaino_best_tip");
+    assert_eq!(scrape.height(family::BEST_TIP), Some(tip), "zingod_best_tip");
     Ok(())
 }

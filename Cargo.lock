@@ -219,6 +219,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
+name = "aws-lc-rs"
+version = "1.19.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "048006790404103c488e6c5616b3e7e702a71292aadda08e8f7698a9e0d2eb53"
+dependencies = [
+ "aws-lc-sys",
+ "untrusted 0.7.1",
+ "zeroize",
+]
+
+[[package]]
+name = "aws-lc-sys"
+version = "0.47.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8bfbe32ac36b3c428696ce315464181bc4029d689fd58e3f2a4e58c252242f52"
+dependencies = [
+ "cc",
+ "cmake",
+ "dunce",
+ "fs_extra",
+ "pkg-config",
+]
+
+[[package]]
 name = "axum"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -679,6 +703,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
+name = "cmake"
+version = "0.1.58"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c0f78a02292a74a88ac736019ab962ece0bc380e3f977bf72e376c5d78ff0678"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "cmov"
 version = "0.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1085,6 +1118,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "dunce"
+version = "1.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
+
+[[package]]
 name = "dyn-clone"
 version = "1.0.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1299,6 +1338,12 @@ dependencies = [
  "num-integer",
  "num-traits",
 ]
+
+[[package]]
+name = "fs_extra"
+version = "1.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "42703706b716c37f96a77aea830392ad231f44c9e9a67872fa5548707e11b11c"
 
 [[package]]
 name = "funty"
@@ -3190,8 +3235,8 @@ version = "0.14.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8774e05a7d0de114588e6a28fe7e71694b82614ed569d86d8b389dfbc98b8ad8"
 dependencies = [
+ "aws-lc-rs",
  "pem",
- "ring",
  "rustls-pki-types",
  "time",
  "x509-parser",
@@ -3339,7 +3384,7 @@ dependencies = [
  "cfg-if",
  "getrandom 0.2.17",
  "libc",
- "untrusted",
+ "untrusted 0.9.0",
  "windows-sys 0.52.0",
 ]
 
@@ -3425,9 +3470,9 @@ version = "0.23.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0d41d731c7d2f962d1ccc364cec258de3c0e93b38c2fb3ba97ac74513048d634"
 dependencies = [
+ "aws-lc-rs",
  "log",
  "once_cell",
- "ring",
  "rustls-pki-types",
  "rustls-webpki",
  "subtle",
@@ -3449,9 +3494,10 @@ version = "0.103.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f3c3cf1d8b1e7d4927e2d154c3fcb02979afb9939629c62cd9048d4f07b60ac2"
 dependencies = [
+ "aws-lc-rs",
  "ring",
  "rustls-pki-types",
- "untrusted",
+ "untrusted 0.9.0",
 ]
 
 [[package]]
@@ -4539,6 +4585,12 @@ dependencies = [
 
 [[package]]
 name = "untrusted"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a156c684c91ea7d62626509bce3cb4e1d9ed5c4d978f7b4352658f96a4c26b4a"
+
+[[package]]
+name = "untrusted"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
@@ -4949,12 +5001,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d43b0f71ce057da06bc0851b23ee24f3f86190b07203dd8f567d0b706a185202"
 dependencies = [
  "asn1-rs",
+ "aws-lc-rs",
  "data-encoding",
  "der-parser",
  "lazy_static",
  "nom",
  "oid-registry",
- "ring",
  "rusticata-macros",
  "thiserror 2.0.18",
  "time",
@@ -5010,432 +5062,6 @@ dependencies = [
  "quote",
  "syn 2.0.118",
  "synstructure",
-]
-
-[[package]]
-name = "zaino-chainview"
-version = "0.11.0-alpha.6"
-dependencies = [
- "arc-swap",
- "bytes",
- "fastrand",
- "futures",
- "imbl",
- "metrics",
- "metrics-util",
- "proptest",
- "serde",
- "strum",
- "thiserror 2.0.18",
- "tokio",
- "tokio-util",
- "tracing",
- "zaino-header-chain",
- "zaino-primitives",
- "zaino-source",
- "zaino-traffic",
- "zcash_protocol",
- "zcash_transparent",
-]
-
-[[package]]
-name = "zaino-grpc"
-version = "0.11.0-alpha.6"
-dependencies = [
- "arc-swap",
- "bytes",
- "const-hex",
- "futures",
- "h2",
- "http",
- "http-body",
- "http-body-util",
- "hyper-util",
- "ipnet",
- "metrics",
- "ppp",
- "prost",
- "rcgen",
- "rustls",
- "serde",
- "socket2",
- "strum",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tokio-rustls",
- "tokio-util",
- "tonic",
- "tower 0.5.3",
- "tracing",
- "zaino-chainview",
- "zaino-grpc-snapshot",
- "zaino-header-chain",
- "zaino-index-compact-block",
- "zaino-index-transparent-address",
- "zaino-index-tree-state",
- "zaino-nfs",
- "zaino-persistence",
- "zaino-primitives",
- "zaino-proto",
- "zaino-source",
- "zaino-sync",
- "zaino-traffic",
- "zcash_address",
- "zcash_protocol",
- "zcash_script",
- "zcash_transparent",
-]
-
-[[package]]
-name = "zaino-grpc-snapshot"
-version = "0.11.0-alpha.6"
-dependencies = [
- "arc-swap",
- "bytes",
- "futures",
- "metrics",
- "metrics-exporter-prometheus",
- "proptest",
- "thiserror 2.0.18",
- "tokio",
- "tokio-util",
- "tracing",
- "zaino-chainview",
- "zaino-header-chain",
- "zaino-internal-block-hash-to-height",
- "zaino-nfs",
- "zaino-persistence",
- "zaino-primitives",
- "zaino-source",
- "zaino-sync",
- "zaino-traffic",
- "zcash_protocol",
- "zcash_transparent",
-]
-
-[[package]]
-name = "zaino-header-chain"
-version = "0.11.0-alpha.6"
-dependencies = [
- "const-hex",
- "equihash",
- "imbl",
- "proptest",
- "reqwest",
- "serde_json",
- "thiserror 2.0.18",
- "zaino-primitives",
- "zaino-source",
- "zcash_protocol",
-]
-
-[[package]]
-name = "zaino-index-compact-block"
-version = "0.11.0-alpha.6"
-dependencies = [
- "bytes",
- "proptest",
- "prost",
- "thiserror 2.0.18",
- "tokio",
- "zaino-persistence",
- "zaino-primitives",
- "zaino-proto",
- "zaino-source",
- "zaino-sync",
- "zcash_protocol",
-]
-
-[[package]]
-name = "zaino-index-transparent-address"
-version = "0.11.0-alpha.6"
-dependencies = [
- "proptest",
- "thiserror 2.0.18",
- "tokio",
- "zaino-persistence",
- "zaino-primitives",
- "zaino-source",
- "zaino-sync",
- "zcash_protocol",
- "zcash_script",
- "zcash_transparent",
-]
-
-[[package]]
-name = "zaino-index-tree-state"
-version = "0.11.0-alpha.6"
-dependencies = [
- "incrementalmerkletree",
- "orchard",
- "proptest",
- "rayon",
- "sapling-crypto",
- "thiserror 2.0.18",
- "tokio",
- "zaino-persistence",
- "zaino-primitives",
- "zaino-source",
- "zaino-sync",
- "zcash_primitives",
- "zcash_protocol",
-]
-
-[[package]]
-name = "zaino-index-utxo-set"
-version = "0.11.0-alpha.6"
-dependencies = [
- "thiserror 2.0.18",
- "tokio",
- "zaino-persistence",
- "zaino-primitives",
- "zaino-source",
- "zaino-sync",
- "zcash_protocol",
- "zcash_transparent",
-]
-
-[[package]]
-name = "zaino-internal-block-hash-to-height"
-version = "0.11.0-alpha.6"
-dependencies = [
- "tokio",
- "zaino-persistence",
- "zaino-primitives",
- "zaino-source",
- "zaino-sync",
- "zcash_protocol",
-]
-
-[[package]]
-name = "zaino-internal-txid-location"
-version = "0.11.0-alpha.6"
-dependencies = [
- "tokio",
- "zaino-persistence",
- "zaino-primitives",
- "zaino-source",
- "zaino-sync",
- "zcash_protocol",
-]
-
-[[package]]
-name = "zaino-nfs"
-version = "0.11.0-alpha.6"
-dependencies = [
- "imbl",
- "metrics",
- "proptest",
- "thiserror 2.0.18",
- "tokio",
- "tokio-util",
- "tracing",
- "zaino-header-chain",
- "zaino-index-compact-block",
- "zaino-index-transparent-address",
- "zaino-index-tree-state",
- "zaino-index-utxo-set",
- "zaino-internal-block-hash-to-height",
- "zaino-internal-txid-location",
- "zaino-persistence",
- "zaino-primitives",
- "zaino-source",
- "zaino-sync",
- "zaino-traffic",
- "zcash_protocol",
-]
-
-[[package]]
-name = "zaino-peers"
-version = "0.11.0-alpha.6"
-dependencies = [
- "chrono",
- "metrics",
- "metrics-exporter-prometheus",
- "proptest",
- "thiserror 2.0.18",
- "tokio",
- "tower 0.4.13",
- "tracing",
- "zaino-primitives",
- "zaino-source",
- "zcash_primitives",
- "zcash_protocol",
- "zebra-chain",
- "zebra-network",
- "zebra-test",
-]
-
-[[package]]
-name = "zaino-persistence"
-version = "0.11.0-alpha.6"
-dependencies = [
- "bytes",
- "crc32fast",
- "hashbrown 0.16.1",
- "imbl",
- "libc",
- "memmap2",
- "metrics",
- "metrics-exporter-prometheus",
- "proptest",
- "rayon",
- "rustix",
- "serde",
- "tempfile",
- "thiserror 2.0.18",
- "tracing",
- "xorf",
- "zaino-primitives",
- "zcash_protocol",
-]
-
-[[package]]
-name = "zaino-primitives"
-version = "0.11.0-alpha.6"
-dependencies = [
- "metrics",
- "serde",
- "sha2 0.10.9",
- "thiserror 2.0.18",
- "toml",
- "uint 0.9.5",
- "zcash_encoding",
- "zcash_protocol",
- "zcash_transparent",
-]
-
-[[package]]
-name = "zaino-proto"
-version = "0.11.0-alpha.6"
-dependencies = [
- "prost",
- "serde",
- "tonic",
- "tonic-prost",
- "tonic-prost-build",
-]
-
-[[package]]
-name = "zaino-source"
-version = "0.11.0-alpha.6"
-dependencies = [
- "const-hex",
- "futures",
- "metrics",
- "metrics-exporter-prometheus",
- "nonempty",
- "orchard",
- "proptest",
- "rcgen",
- "redjubjub",
- "reqwest",
- "sapling-crypto",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tokio-util",
- "tonic",
- "tracing",
- "zaino-primitives",
- "zaino-proto",
- "zaino-source",
- "zcash_encoding",
- "zcash_primitives",
- "zcash_protocol",
- "zcash_script",
- "zcash_transparent",
-]
-
-[[package]]
-name = "zaino-sync"
-version = "0.11.0-alpha.6"
-dependencies = [
- "futures",
- "metrics",
- "proptest",
- "rayon",
- "thiserror 2.0.18",
- "tokio",
- "tokio-util",
- "tracing",
- "zaino-header-chain",
- "zaino-persistence",
- "zaino-primitives",
- "zaino-source",
- "zaino-traffic",
- "zcash_protocol",
-]
-
-[[package]]
-name = "zaino-traffic"
-version = "0.11.0-alpha.6"
-dependencies = [
- "futures",
- "metrics",
- "proptest",
- "serde",
- "tokio",
- "tokio-util",
- "tracing",
- "tracing-subscriber",
- "zaino-primitives",
- "zaino-source",
- "zcash_protocol",
-]
-
-[[package]]
-name = "zainod"
-version = "0.11.0-alpha.6"
-dependencies = [
- "bytes",
- "clap",
- "config",
- "dirs",
- "futures",
- "http-body-util",
- "hyper",
- "hyper-util",
- "metrics",
- "metrics-exporter-prometheus",
- "metrics-process",
- "reqwest",
- "rlimit",
- "rustix",
- "sd-notify",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tar",
- "tempfile",
- "thiserror 2.0.18",
- "tikv-jemallocator",
- "tokio",
- "tokio-util",
- "toml",
- "tonic",
- "tracing",
- "tracing-logfmt",
- "tracing-subscriber",
- "zaino-chainview",
- "zaino-grpc",
- "zaino-grpc-snapshot",
- "zaino-header-chain",
- "zaino-index-transparent-address",
- "zaino-index-tree-state",
- "zaino-nfs",
- "zaino-peers",
- "zaino-persistence",
- "zaino-primitives",
- "zaino-proto",
- "zaino-source",
- "zaino-sync",
- "zaino-traffic",
- "zcash_protocol",
- "zstd",
 ]
 
 [[package]]
@@ -5798,6 +5424,433 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.118",
+]
+
+[[package]]
+name = "zingod"
+version = "0.11.0-alpha.6"
+dependencies = [
+ "bytes",
+ "clap",
+ "config",
+ "dirs",
+ "futures",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "metrics",
+ "metrics-exporter-prometheus",
+ "metrics-process",
+ "reqwest",
+ "rlimit",
+ "rustix",
+ "sd-notify",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tar",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tikv-jemallocator",
+ "tokio",
+ "tokio-util",
+ "toml",
+ "tonic",
+ "tracing",
+ "tracing-logfmt",
+ "tracing-subscriber",
+ "zcash_protocol",
+ "zingod-chainview",
+ "zingod-grpc",
+ "zingod-grpc-snapshot",
+ "zingod-header-chain",
+ "zingod-index-transparent-address",
+ "zingod-index-tree-state",
+ "zingod-nfs",
+ "zingod-peers",
+ "zingod-persistence",
+ "zingod-primitives",
+ "zingod-proto",
+ "zingod-source",
+ "zingod-sync",
+ "zingod-traffic",
+ "zstd",
+]
+
+[[package]]
+name = "zingod-chainview"
+version = "0.11.0-alpha.6"
+dependencies = [
+ "arc-swap",
+ "bytes",
+ "fastrand",
+ "futures",
+ "imbl",
+ "metrics",
+ "metrics-util",
+ "proptest",
+ "serde",
+ "strum",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "zcash_protocol",
+ "zcash_transparent",
+ "zingod-header-chain",
+ "zingod-primitives",
+ "zingod-source",
+ "zingod-traffic",
+]
+
+[[package]]
+name = "zingod-grpc"
+version = "0.11.0-alpha.6"
+dependencies = [
+ "arc-swap",
+ "aws-lc-rs",
+ "bytes",
+ "const-hex",
+ "futures",
+ "h2",
+ "http",
+ "http-body",
+ "http-body-util",
+ "hyper-util",
+ "ipnet",
+ "metrics",
+ "ppp",
+ "prost",
+ "rcgen",
+ "rustls",
+ "serde",
+ "socket2",
+ "strum",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-rustls",
+ "tokio-util",
+ "tonic",
+ "tower 0.5.3",
+ "tracing",
+ "zcash_address",
+ "zcash_protocol",
+ "zcash_script",
+ "zcash_transparent",
+ "zingod-chainview",
+ "zingod-grpc-snapshot",
+ "zingod-header-chain",
+ "zingod-index-compact-block",
+ "zingod-index-transparent-address",
+ "zingod-index-tree-state",
+ "zingod-nfs",
+ "zingod-persistence",
+ "zingod-primitives",
+ "zingod-proto",
+ "zingod-source",
+ "zingod-sync",
+ "zingod-traffic",
+]
+
+[[package]]
+name = "zingod-grpc-snapshot"
+version = "0.11.0-alpha.6"
+dependencies = [
+ "arc-swap",
+ "bytes",
+ "futures",
+ "metrics",
+ "metrics-exporter-prometheus",
+ "proptest",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "zcash_protocol",
+ "zcash_transparent",
+ "zingod-chainview",
+ "zingod-header-chain",
+ "zingod-internal-block-hash-to-height",
+ "zingod-nfs",
+ "zingod-persistence",
+ "zingod-primitives",
+ "zingod-source",
+ "zingod-sync",
+ "zingod-traffic",
+]
+
+[[package]]
+name = "zingod-header-chain"
+version = "0.11.0-alpha.6"
+dependencies = [
+ "const-hex",
+ "equihash",
+ "imbl",
+ "proptest",
+ "reqwest",
+ "serde_json",
+ "thiserror 2.0.18",
+ "zcash_protocol",
+ "zingod-primitives",
+ "zingod-source",
+]
+
+[[package]]
+name = "zingod-index-compact-block"
+version = "0.11.0-alpha.6"
+dependencies = [
+ "bytes",
+ "proptest",
+ "prost",
+ "thiserror 2.0.18",
+ "tokio",
+ "zcash_protocol",
+ "zingod-persistence",
+ "zingod-primitives",
+ "zingod-proto",
+ "zingod-source",
+ "zingod-sync",
+]
+
+[[package]]
+name = "zingod-index-transparent-address"
+version = "0.11.0-alpha.6"
+dependencies = [
+ "proptest",
+ "thiserror 2.0.18",
+ "tokio",
+ "zcash_protocol",
+ "zcash_script",
+ "zcash_transparent",
+ "zingod-persistence",
+ "zingod-primitives",
+ "zingod-source",
+ "zingod-sync",
+]
+
+[[package]]
+name = "zingod-index-tree-state"
+version = "0.11.0-alpha.6"
+dependencies = [
+ "incrementalmerkletree",
+ "orchard",
+ "proptest",
+ "rayon",
+ "sapling-crypto",
+ "thiserror 2.0.18",
+ "tokio",
+ "zcash_primitives",
+ "zcash_protocol",
+ "zingod-persistence",
+ "zingod-primitives",
+ "zingod-source",
+ "zingod-sync",
+]
+
+[[package]]
+name = "zingod-index-utxo-set"
+version = "0.11.0-alpha.6"
+dependencies = [
+ "thiserror 2.0.18",
+ "tokio",
+ "zcash_protocol",
+ "zcash_transparent",
+ "zingod-persistence",
+ "zingod-primitives",
+ "zingod-source",
+ "zingod-sync",
+]
+
+[[package]]
+name = "zingod-internal-block-hash-to-height"
+version = "0.11.0-alpha.6"
+dependencies = [
+ "tokio",
+ "zcash_protocol",
+ "zingod-persistence",
+ "zingod-primitives",
+ "zingod-source",
+ "zingod-sync",
+]
+
+[[package]]
+name = "zingod-internal-txid-location"
+version = "0.11.0-alpha.6"
+dependencies = [
+ "tokio",
+ "zcash_protocol",
+ "zingod-persistence",
+ "zingod-primitives",
+ "zingod-source",
+ "zingod-sync",
+]
+
+[[package]]
+name = "zingod-nfs"
+version = "0.11.0-alpha.6"
+dependencies = [
+ "imbl",
+ "metrics",
+ "proptest",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "zcash_protocol",
+ "zingod-header-chain",
+ "zingod-index-compact-block",
+ "zingod-index-transparent-address",
+ "zingod-index-tree-state",
+ "zingod-index-utxo-set",
+ "zingod-internal-block-hash-to-height",
+ "zingod-internal-txid-location",
+ "zingod-persistence",
+ "zingod-primitives",
+ "zingod-source",
+ "zingod-sync",
+ "zingod-traffic",
+]
+
+[[package]]
+name = "zingod-peers"
+version = "0.11.0-alpha.6"
+dependencies = [
+ "chrono",
+ "metrics",
+ "metrics-exporter-prometheus",
+ "proptest",
+ "thiserror 2.0.18",
+ "tokio",
+ "tower 0.4.13",
+ "tracing",
+ "zcash_primitives",
+ "zcash_protocol",
+ "zebra-chain",
+ "zebra-network",
+ "zebra-test",
+ "zingod-primitives",
+ "zingod-source",
+]
+
+[[package]]
+name = "zingod-persistence"
+version = "0.11.0-alpha.6"
+dependencies = [
+ "bytes",
+ "crc32fast",
+ "hashbrown 0.16.1",
+ "imbl",
+ "libc",
+ "memmap2",
+ "metrics",
+ "metrics-exporter-prometheus",
+ "proptest",
+ "rayon",
+ "rustix",
+ "serde",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tracing",
+ "xorf",
+ "zcash_protocol",
+ "zingod-primitives",
+]
+
+[[package]]
+name = "zingod-primitives"
+version = "0.11.0-alpha.6"
+dependencies = [
+ "metrics",
+ "serde",
+ "sha2 0.10.9",
+ "thiserror 2.0.18",
+ "toml",
+ "uint 0.9.5",
+ "zcash_encoding",
+ "zcash_protocol",
+ "zcash_transparent",
+]
+
+[[package]]
+name = "zingod-proto"
+version = "0.11.0-alpha.6"
+dependencies = [
+ "prost",
+ "serde",
+ "tonic",
+ "tonic-prost",
+ "tonic-prost-build",
+]
+
+[[package]]
+name = "zingod-source"
+version = "0.11.0-alpha.6"
+dependencies = [
+ "const-hex",
+ "futures",
+ "metrics",
+ "metrics-exporter-prometheus",
+ "nonempty",
+ "orchard",
+ "proptest",
+ "rcgen",
+ "redjubjub",
+ "reqwest",
+ "sapling-crypto",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+ "tonic",
+ "tracing",
+ "zcash_encoding",
+ "zcash_primitives",
+ "zcash_protocol",
+ "zcash_script",
+ "zcash_transparent",
+ "zingod-primitives",
+ "zingod-proto",
+ "zingod-source",
+]
+
+[[package]]
+name = "zingod-sync"
+version = "0.11.0-alpha.6"
+dependencies = [
+ "futures",
+ "metrics",
+ "proptest",
+ "rayon",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "zcash_protocol",
+ "zingod-header-chain",
+ "zingod-persistence",
+ "zingod-primitives",
+ "zingod-source",
+ "zingod-traffic",
+]
+
+[[package]]
+name = "zingod-traffic"
+version = "0.11.0-alpha.6"
+dependencies = [
+ "futures",
+ "metrics",
+ "proptest",
+ "serde",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+ "zcash_protocol",
+ "zingod-primitives",
+ "zingod-source",
 ]
 
 [[package]]

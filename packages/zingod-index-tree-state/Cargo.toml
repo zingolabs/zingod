@@ -1,0 +1,30 @@
+[package]
+name = "zingod-index-tree-state"
+publish.workspace = true
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Retained-node commitment tree index: tree states and subtree roots"
+
+[dependencies]
+incrementalmerkletree = { workspace = true, features = ["legacy-api"] }
+orchard.workspace = true
+rayon.workspace = true
+sapling-crypto.workspace = true
+thiserror.workspace = true
+zingod-persistence.workspace = true
+zingod-primitives.workspace = true
+zingod-sync.workspace = true
+zcash_primitives.workspace = true
+zcash_protocol.workspace = true
+
+[dev-dependencies]
+zingod-source = { workspace = true, features = ["testing"] }
+zingod-persistence = { workspace = true, features = ["testing"] }
+proptest.workspace = true
+zingod-sync = { workspace = true, features = ["testing"] }
+tokio = { workspace = true, features = ["macros", "rt"] }
+
+[lints.rust]
+unreachable_pub = "warn"

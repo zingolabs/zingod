@@ -1,6 +1,6 @@
 # Standalone workspace, not a member of the root one or of `live-tests`
 #
-# - Links no Zingod production code: drives zainod out-of-process (a pod) over gRPC + JSON-RPC
+# - Links no Zingod production code: drives zingod out-of-process (a pod) over gRPC + JSON-RPC
 # - Its tree (ztest + its cluster clients) stays out of every production lock
 [workspace]
 members = ["."]
@@ -8,7 +8,7 @@ resolver = "2"
 
 [package]
 name = "sync"
-description = "Chain-sync profiles with Zingod as the system under test: zainod builds its index to the mainnet tip, then each index is held to zebra. Each is a `#[ztest::sync_test]` launched via `ztest sync start`."
+description = "Chain-sync profiles with Zingod as the system under test: zingod builds its index to the mainnet tip, then each index is held to zebra. Each is a `#[ztest::sync_test]` launched via `ztest sync start`."
 version = "0.3.0"
 edition = "2021"
 license = "Apache-2.0"

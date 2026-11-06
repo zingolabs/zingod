@@ -35,7 +35,7 @@ async fn read_surface_serves_the_validators_chain() -> Result<()> {
     assert_eq!(
         indexer.latest_block().await?,
         validator.tip().await?,
-        "served tip: zaino vs zebrad"
+        "served tip: zingod vs zebrad"
     );
 
     let by_height = indexer.get_block(BlockHeight::from(1u32)).await?;
@@ -45,7 +45,7 @@ async fn read_surface_serves_the_validators_chain() -> Result<()> {
     let by_hash = indexer.get_block_by_hash(hash).await?;
     assert_eq!(by_hash, by_height, "block 1: GetBlock by hash {hash} vs by height");
 
-    // From 1 (non-standard genesis coinbase script unservable: zingolabs/zaino#818)
+    // From 1 (non-standard genesis coinbase script unservable: zingolabs/zingod#818)
     let start = BlockHeight::from(1u32);
     let shielded = indexer.get_block_range(start, tip).await?;
     assert_eq!(shielded.len() as u64, height, "every height in [1, {tip:?}]");
@@ -100,7 +100,7 @@ async fn read_surface_serves_the_validators_chain() -> Result<()> {
     let best = vrpc.call_value("getbestblockhash", json!([])).await?;
     let best = best.as_str().with_context(|| format!("getbestblockhash: {best}"))?;
     let served = (tree.height, tree.hash.as_str());
-    assert_eq!(served, (height, best), "tip tree state (height, hash): zaino vs zebrad");
+    assert_eq!(served, (height, best), "tip tree state (height, hash): zingod vs zebrad");
     let latest = indexer.get_latest_tree_state().await?;
     assert_eq!(latest, tree, "GetLatestTreeState vs GetTreeState({height})");
 
@@ -118,7 +118,7 @@ async fn read_surface_serves_the_validators_chain() -> Result<()> {
             .as_array()
             .with_context(|| format!("z_getsubtreesbyindex {pool} from {start}: {reply}"))?;
         assert_eq!(zebrad.len(), 0, "premise: zebrad completes no {pool} subtree by {height}");
-        let zaino: Vec<(String, u64)> = indexer
+        let zingod: Vec<(String, u64)> = indexer
             .get_subtree_roots(start, protocol, ALL_ENTRIES)
             .await
             .with_context(|| format!("GetSubtreeRoots {pool} from {start}"))?
@@ -126,9 +126,9 @@ async fn read_surface_serves_the_validators_chain() -> Result<()> {
             .map(|root| (hex::encode(&root.root_hash), root.completing_block_height))
             .collect();
         assert_eq!(
-            zaino,
+            zingod,
             Vec::<(String, u64)>::new(),
-            "{pool} subtree (root, completing height) from {start}: zaino"
+            "{pool} subtree (root, completing height) from {start}: zingod"
         );
     }
     Ok(())

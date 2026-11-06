@@ -4393,6 +4393,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "tracing-logfmt"
+version = "0.3.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a250055a3518b5efba928a18ffac8d32d42ea607a9affff4532144cd5b2e378e"
+dependencies = [
+ "time",
+ "tracing",
+ "tracing-core",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "tracing-subscriber"
 version = "0.3.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5601,6 +5613,7 @@ dependencies = [
  "tonic",
  "tonic-prost",
  "tracing",
+ "tracing-logfmt",
  "tracing-subscriber",
  "walkdir",
  "zcash_client_backend",

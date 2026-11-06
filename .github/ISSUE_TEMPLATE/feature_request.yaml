@@ -29,8 +29,8 @@ body:
       label: Usage mode
       description: How are you using Zingod?
       options:
-        - zainod (running the daemon)
-        - Library integration (using zaino-* crates)
+        - zingod (running the daemon)
+        - Library integration (using zingod-* crates)
         - Both / Not sure
     validations:
       required: true

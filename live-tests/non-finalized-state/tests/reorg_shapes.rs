@@ -48,7 +48,7 @@ async fn every_index_serves_the_validators_chain_after_a_reorg(
         indexer.get_block_range_with_pools(1u32.into(), old_tip.0, ALL_POOLS.to_vec()).await?;
     let old_trees = indexer.get_latest_tree_state().await?;
     let reorgs = indexer.read(SCRAPE).await?.counter_total(family::REORGS);
-    assert_eq!(reorgs, Some(0), "zaino_reorgs_total published at 0 before any reorg");
+    assert_eq!(reorgs, Some(0), "zingod_reorgs_total published at 0 before any reorg");
 
     let reorg = validator.reorg(depth, len, Some(FILLER_ADDRESS)).await?;
     indexer.wait_for_tip(reorg.tip, CONVERGE).await?;
@@ -64,7 +64,7 @@ async fn every_index_serves_the_validators_chain_after_a_reorg(
         let hash = BlockHash::from_wire(&block.hash).context("served hash is 32 bytes")?;
         assert_eq!(block.height, u64::from(height), "range order (fork {fork})");
         let hash = Some(hash.to_string());
-        assert_eq!(hash.as_deref(), truth.as_str(), "{height} hash: zaino vs zebrad (fork {fork})");
+        assert_eq!(hash.as_deref(), truth.as_str(), "{height} hash: zingod vs zebrad (fork {fork})");
     }
     for pair in served.windows(2) {
         let (link, parent) = (hex::encode(&pair[1].prev_hash), hex::encode(&pair[0].hash));
@@ -94,17 +94,17 @@ async fn every_index_serves_the_validators_chain_after_a_reorg(
 
     let empty = |tree: &str| if tree.is_empty() { "000000".to_owned() } else { tree.to_owned() };
     for height in fork_parent..=tip {
-        let zaino = indexer.get_tree_state(height.into()).await?;
+        let zingod = indexer.get_tree_state(height.into()).await?;
         let zebra = vrpc.call_value("z_gettreestate", json!([height.to_string()])).await?;
         let final_state = |pool: &str| {
             empty(zebra[pool]["commitments"]["finalState"].as_str().unwrap_or_default())
         };
         let served = [
-            zaino.hash.clone(),
-            zaino.time.to_string(),
-            empty(&zaino.sapling_tree),
-            empty(&zaino.orchard_tree),
-            empty(&zaino.ironwood_tree),
+            zingod.hash.clone(),
+            zingod.time.to_string(),
+            empty(&zingod.sapling_tree),
+            empty(&zingod.orchard_tree),
+            empty(&zingod.ironwood_tree),
         ];
         let truth = [
             zebra["hash"].as_str().unwrap_or_default().to_owned(),
@@ -115,7 +115,7 @@ async fn every_index_serves_the_validators_chain_after_a_reorg(
         ];
         assert_eq!(
             served, truth,
-            "[hash, time, sapling, orchard, ironwood] at {height}: zaino vs zebrad"
+            "[hash, time, sapling, orchard, ironwood] at {height}: zingod vs zebrad"
         );
     }
     let latest = indexer.get_latest_tree_state().await?;
@@ -132,7 +132,7 @@ async fn every_index_serves_the_validators_chain_after_a_reorg(
 
     let scrape = indexer.read(SCRAPE).await?;
     assert_eq!(scrape.counter_total(family::REORGS), Some(1), "one rollback counted");
-    assert_eq!(scrape.height(family::BEST_TIP), Some(tip), "zaino_best_tip");
+    assert_eq!(scrape.height(family::BEST_TIP), Some(tip), "zingod_best_tip");
     for index in ZainoIndex::ALL {
         assert_eq!(indexer.synced(index).await?, Some(true), "{index:?} synced at the new tip");
     }

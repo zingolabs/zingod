@@ -1,0 +1,185 @@
+//! Trusted validator telemetry: alarm conditions per merge, submission counters
+//!
+//! - Observation only: never moves the tip, never gates serving or sync (false alarm = a log line)
+//! - State gauges + alarm edge logs = `zingod-grpc-snapshot`'s (at scrape, per publish)
+
+use std::collections::BTreeSet;
+
+use strum::VariantArray as _;
+
+use zcash_protocol::local_consensus::LocalNetwork;
+use zingod_primitives::metric::Metric;
+
+use crate::alarm_thresholds::{END_OF_SERVICE_WARN, STALE_TIP_BLOCKS};
+use zingod_traffic::{Health, TrustedValidatorId};
+
+use crate::submit::Ended;
+use crate::trusted_validators::TrustedValidatorMeta;
+
+mod names {
+    pub(super) const SUBMISSIONS: &str = "zingod.chainview.submissions_total";
+    pub(super) const SUBMISSION_ATTEMPTS: &str = "zingod.chainview.submission_attempts";
+}
+
+/// Every metric this crate emits
+pub const METRICS: &[Metric] = &[
+    Metric::counter(
+        names::SUBMISSIONS,
+        "Submissions ended, by outcome (spread = seen past its entries; unconfirmed = accepted, \
+         spread unobservable; rejected; unreachable)",
+    ),
+    Metric::histogram(
+        names::SUBMISSION_ATTEMPTS,
+        "Entries one submission pushed to before it ended, by outcome",
+    ),
+];
+
+/// One alarm condition: raised in `telemetry::alarms`, noted + logged by `zingod-grpc-snapshot`'s report
+///
+/// - new alarm = a variant + its condition in `alarms`, then the compiler names `note`, `edge`
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, strum::VariantArray)]
+pub enum Alarm {
+    FinalityPaused,
+    Stale,
+    Ending,
+}
+
+/// Raised alarms as of one merge: `(alarm, by)`, `by` = the trusted validator raising it
+/// (`None` = view-wide)
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Alarms(BTreeSet<(Alarm, Option<TrustedValidatorId>)>);
+
+impl Alarms {
+    pub fn raised(&self, alarm: Alarm) -> bool {
+        self.0.iter().any(|(raised, _)| *raised == alarm)
+    }
+
+    /// Trusted validators raising `alarm` (empty for a view-wide one)
+    #[cfg(test)]
+    pub(crate) fn by(&self, alarm: Alarm) -> crate::TrustedValidatorSet {
+        self.0.iter().filter(|(raised, _)| *raised == alarm).filter_map(|(_, by)| *by).collect()
+    }
+
+    /// Raised here, not in `earlier` (`earlier.since(self)` = cleared)
+    pub fn since<'a>(
+        &'a self,
+        earlier: &'a Alarms,
+    ) -> impl Iterator<Item = (Alarm, Option<TrustedValidatorId>)> + 'a {
+        self.0.difference(&earlier.0).copied()
+    }
+
+    /// Raised instances per alarm, `Alarm` order (0 = clear)
+    pub fn counts(&self) -> impl Iterator<Item = (Alarm, usize)> + '_ {
+        let count = |alarm: Alarm| self.0.iter().filter(|(raised, _)| *raised == alarm).count();
+        Alarm::VARIANTS.iter().map(move |alarm| (*alarm, count(*alarm)))
+    }
+}
+
+/// `finality_paused` = finalized tip unmoved ≥ 60 s, a block `depth` deep no trusted validator
+/// vouched for (H6)
+pub(crate) fn alarms(
+    trusted_validators: &imbl::Vector<TrustedValidatorMeta>,
+    schedule: &LocalNetwork,
+    finality_paused: bool,
+) -> Alarms {
+    let view_wide = finality_paused.then_some((Alarm::FinalityPaused, None));
+    let per_validator = trusted_validators.iter().enumerate().flat_map(|(index, meta)| {
+        let by = TrustedValidatorId::new(index).expect("configured below TrustedValidatorId::MAX");
+        let stale = meta.health == Health::Live
+            && meta.stale_blocks().is_some_and(|behind| behind >= STALE_TIP_BLOCKS);
+        let left = meta.time_to_end_of_service(schedule);
+        let ending = left.is_some_and(|left| left <= END_OF_SERVICE_WARN);
+        [(Alarm::Stale, stale), (Alarm::Ending, ending)]
+            .into_iter()
+            .filter_map(move |(alarm, raised)| raised.then_some((alarm, Some(by))))
+    });
+    Alarms(view_wide.into_iter().chain(per_validator).collect())
+}
+
+/// One submission ended: its outcome and how many entries it took
+pub(crate) fn submitted(ended: &Ended, attempts: usize) {
+    let outcome = match ended {
+        Ended::Spread => "spread",
+        Ended::Unconfirmed => "unconfirmed",
+        Ended::Rejected(_) => "rejected",
+        Ended::Unreachable(_) => "unreachable",
+    };
+    metrics::counter!(names::SUBMISSIONS, "outcome" => outcome).increment(1);
+    metrics::histogram!(names::SUBMISSION_ATTEMPTS, "outcome" => outcome).record(attempts as f64);
+}
+
+#[cfg(test)]
+mod tests {
+    use zcash_protocol::BlockHash;
+    use zingod_primitives::types::BlockRef;
+    use zingod_source::{BlockchainInfo, EndOfService, NodeRelease};
+
+    use zingod_source::testing::{all_at, h};
+
+    use super::*;
+    use crate::TrustedValidatorSet;
+
+    #[test]
+    fn stale_rises_only_on_a_live_tip_24_blocks_behind_its_own_clock() {
+        use Health::{CatchingUp, Live};
+        const TIP: u32 = 10;
+        #[rustfmt::skip]
+        let cases: [(&str, Health, u32, &[usize]); 4] = [
+            // case,                      health,     clock estimate,                stale
+            ("isolated regtest node",     Live,       TIP,                           &[]),
+            ("one block short of stale",  Live,       TIP + STALE_TIP_BLOCKS - 1,    &[]),
+            ("stale live tip",            Live,       TIP + STALE_TIP_BLOCKS,        &[0]),
+            ("catching up: not an alarm", CatchingUp, TIP + 20 * STALE_TIP_BLOCKS,   &[]),
+        ];
+        for (case, health, estimated, stale) in cases {
+            let mut meta = TrustedValidatorMeta::new("v0:8232".to_owned());
+            meta.health = health;
+            meta.info = Some(BlockchainInfo {
+                tip: BlockRef { hash: BlockHash([0; 32]), height: h(TIP) },
+                estimated_height: h(estimated),
+                activations: Vec::new(),
+            });
+            let raised = alarms(&imbl::vector![meta], &all_at(h(1)), false);
+            let expected = TrustedValidatorSet::at(stale.iter().copied());
+            assert_eq!(raised.by(Alarm::Stale), expected, "{case}: stale validators");
+            let others = raised.raised(Alarm::Ending) || raised.raised(Alarm::FinalityPaused);
+            assert!(!others, "{case}: only Stale may rise: {raised:?}");
+        }
+    }
+
+    /// A week = 8,064 blocks at 75 s, 24,192 at 25 s, 4,032 + 12,096 with NU7 halfway
+    #[test]
+    fn ending_rises_on_a_release_halting_within_a_week_of_its_tip() {
+        const TIP: u32 = 10;
+        let halts = |height: u32| EndOfService::At { height: h(height) };
+        let pre_nu7 = all_at(h(1));
+        let nu7 = LocalNetwork { nu7: Some(h(1)), ..pre_nu7 };
+        let nu7_halfway = LocalNetwork { nu7: Some(h(TIP + 4_032 + 1)), ..pre_nu7 };
+        #[rustfmt::skip]
+        let cases: [(&str, LocalNetwork, EndOfService, &[usize]); 8] = [
+            // case,                           schedule,    release halts,                  ending
+            ("75 s: halts a week out",         pre_nu7,     halts(TIP + 8_064),             &[0]),
+            ("75 s: a block past a week",      pre_nu7,     halts(TIP + 8_065),             &[]),
+            ("25 s: halts a week out",         nu7,         halts(TIP + 24_192),            &[0]),
+            ("25 s: a block past a week",      nu7,         halts(TIP + 24_193),            &[]),
+            ("NU7 halfway: a week out",        nu7_halfway, halts(TIP + 4_032 + 12_096),    &[0]),
+            ("NU7 halfway: a block past",      nu7_halfway, halts(TIP + 4_032 + 12_097),    &[]),
+            ("no halt enforced",               pre_nu7,     EndOfService::NotEnforced,      &[]),
+            ("halt unknown",                   pre_nu7,     EndOfService::Unknown,          &[]),
+        ];
+        for (case, schedule, end_of_service, ending) in cases {
+            let mut meta = TrustedValidatorMeta::new("v0:8232".to_owned());
+            meta.health = Health::Live;
+            meta.info = Some(BlockchainInfo {
+                tip: BlockRef { hash: BlockHash([0; 32]), height: h(TIP) },
+                estimated_height: h(TIP),
+                activations: Vec::new(),
+            });
+            let (build, user_agent) = ("v6.4.2".to_owned(), "/Zebra:6.4.2/".to_owned());
+            meta.telemetry.release = Some(NodeRelease { build, user_agent, end_of_service });
+            let raised = alarms(&imbl::vector![meta], &schedule, false);
+            let expected = TrustedValidatorSet::at(ending.iter().copied());
+            assert_eq!(raised.by(Alarm::Ending), expected, "{case}: ending validators");
+        }
+    }
+}

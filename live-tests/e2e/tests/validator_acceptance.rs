@@ -1,6 +1,6 @@
-//! Wallet spends at each note age, synced through zainod, accepted by zebrad
+//! Wallet spends at each note age, synced through zingod, accepted by zebrad
 //!
-//! - Spends anchor on zainod's served tree states (a wrong tree = a rejected spend)
+//! - Spends anchor on zingod's served tree states (a wrong tree = a rejected spend)
 //! - Aging mined to `FILLER_ADDRESS` (no spender gains a younger note)
 
 use std::time::Duration;

@@ -67,17 +67,17 @@ failure — never `impl From` / `impl TryFrom`, which hide both behind `.into()`
 
 - Disk: the index that owns a file owns its layout, as `encode(&X) -> [u8; N]`
   and `decode(&[u8; N]) -> X` (or `Result<X, E>` when some bytes are invalid).
-  Reference: `packages/zaino-index-tree-state/src/heights.rs`.
-- Wire: domain crates (`zaino-primitives`, …) never depend on `zaino-proto`.
+  Reference: `packages/zingod-index-tree-state/src/heights.rs`.
+- Wire: domain crates (`zingod-primitives`, …) never depend on `zingod-proto`.
   The crate that produces or consumes the wire bytes owns the conversion (e.g.
-  `encode_compact_block` in `packages/zaino-index-compact-block/src/encode.rs`); a fallible
+  `encode_compact_block` in `packages/zingod-index-compact-block/src/encode.rs`); a fallible
   wire → domain conversion returns an error enum naming each rejection.
 - A golden-bytes / round-trip test sits next to each layout and each wire
   conversion, not in a distant test module.
 - Byte order (as zebra's state): a **locator** (height, transaction / output / subtree
   index) is big-endian everywhere, key or value; a **quantity** (amount, size, count, time)
   is little-endian, as the protocol encodes it; hashes and protocol structures as serialized.
-  Exempt: `zaino-persistence`'s engine-internal segment ids and page indexes (little-endian,
+  Exempt: `zingod-persistence`'s engine-internal segment ids and page indexes (little-endian,
   never a domain key).
 
 Error `From` impls used with `?`, and conversions between two domain types,
@@ -129,7 +129,7 @@ say so when you do.
 ## Docs: one home per fact
 
 System design (how crates fit together, what each source is trusted for, why) lives
-in `docs/architecture.md` only; operating `zainod` lives in `docs/running.md`. Each
+in `docs/architecture.md` only; operating `zingod` lives in `docs/running.md`. Each
 crate's `packages/<crate>/usage.md` (the crate's rustdoc too, where its `lib.rs`
 has `#![doc = include_str!("../usage.md")]`) holds crate-specific detail only:
 wiring, API contract, invariant tables, tests. An invariant code (`T1`, `G5`, …)
@@ -158,7 +158,7 @@ deliberately light and is not enough.
 
 - `DiskEngine`'s model test
   (`random_histories_answer_like_a_btreemap_through_merges_reopens_and_power_loss`,
-  `packages/zaino-persistence/src/disk/model_tests.rs`) is its own: a new engine writes its own tests
+  `packages/zingod-persistence/src/disk/model_tests.rs`) is its own: a new engine writes its own tests
   and does not share or edit `DiskEngine`'s.
 - On a failure, commit the saved case, fix the bug and rerun the whole block. Never shorten the
   run, lower case counts, loosen an assertion, or skip a test to get green.

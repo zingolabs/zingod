@@ -2,6 +2,6 @@
 fingerprint = "b9d458926ef36745"
 reason = "Per-index writer loops stay inline by decision"
 members = [
-    "TransparentAddressIndexWriter::run (zaino-index-transparent-address/src/writer.rs)",
-    "BlockHashIndexWriter::run (zaino-internal-block-hash-to-height/src/writer.rs)",
+    "TransparentAddressIndexWriter::run (zingod-index-transparent-address/src/writer.rs)",
+    "BlockHashIndexWriter::run (zingod-internal-block-hash-to-height/src/writer.rs)",
 ]

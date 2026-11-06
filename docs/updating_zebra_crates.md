@@ -1,9 +1,9 @@
 # Updating Zebra
 
-Zingod's validator path links no Zebra crate. `zaino-source` fetches each block as consensus
+Zingod's validator path links no Zebra crate. `zingod-source` fetches each block as consensus
 bytes (JSON-RPC `getblock <hash> 0`, or the indexer gRPC), decodes it with librustzcash, and
-parses every other JSON-RPC result itself (`packages/zaino-source/src/json.rs`). The one Zebra
-link is `zaino-peers`, which embeds `zebra-network` (and `zebra-chain`) as Zingod's p2p layer,
+parses every other JSON-RPC result itself (`packages/zingod-source/src/json.rs`). The one Zebra
+link is `zingod-peers`, which embeds `zebra-network` (and `zebra-chain`) as Zingod's p2p layer,
 pinned by git rev in the root `Cargo.toml`.
 
 So keeping up with Zebra means testing against each new zebrad release, plus moving the
@@ -19,7 +19,7 @@ tagged Zebra source for the node version you target, not the crates.io crates.
 1. Check out the matching tag in the `zebra` checkout beside this repository: the sync profiles
    build zebrad's image from it.
 1. Run the live tests ([testing.md](./testing.md)). A changed response shape shows up as a parse
-   error in `zaino-source`, which is where it is fixed.
+   error in `zingod-source`, which is where it is fixed.
 
 ## Pinning unreleased dependencies
 

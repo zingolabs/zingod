@@ -1,0 +1,81 @@
+[package]
+name = "zingod"
+publish.workspace = true
+version.workspace = true
+description = "The Zingod indexer daemon."
+authors = { workspace = true }
+repository = { workspace = true }
+homepage = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+
+[dependencies]
+# Runtime stack (config-agnostic, zingod translates its config into their typed params at boot)
+zingod-primitives.workspace = true
+zingod-persistence.workspace = true
+zingod-source.workspace = true
+zingod-traffic.workspace = true
+zingod-header-chain.workspace = true
+zingod-peers.workspace = true
+zingod-chainview.workspace = true
+zingod-sync.workspace = true
+zingod-nfs.workspace = true
+zingod-index-tree-state.workspace = true
+zingod-index-transparent-address.workspace = true
+zingod-grpc-snapshot.workspace = true
+zingod-grpc.workspace = true
+zcash_protocol.workspace = true
+
+# Runtime
+tokio = { workspace = true, features = ["full"] }
+tokio-util.workspace = true
+futures.workspace = true
+bytes.workspace = true
+tikv-jemallocator.workspace = true
+rlimit = "0.11"
+
+# CLI + default config/store paths
+clap = { workspace = true, features = ["derive"] }
+dirs.workspace = true
+
+# Config
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+toml.workspace = true
+config.workspace = true
+thiserror.workspace = true
+
+# Logging
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tracing-logfmt = { version = "0.3.7", features = ["ansi_logs"] }
+
+# Admin listener: Prometheus /metrics scrape endpoint and /livez probe
+metrics.workspace = true
+metrics-exporter-prometheus = { workspace = true, features = ["protobuf"] }
+metrics-process.workspace = true
+hyper = { workspace = true, features = ["server", "http1"] }
+hyper-util = { workspace = true, features = ["tokio"] }
+http-body-util.workspace = true
+
+# Index snapshot bootstrap: aria2c JSON-RPC, free space, unpack
+reqwest.workspace = true
+rustix = { version = "1.1", features = ["fs"] }
+zstd = "0.14.0"
+tar = "0.4.46"
+sd-notify = "0.5"
+
+[dev-dependencies]
+tempfile = { workspace = true }
+zingod-persistence = { workspace = true, features = ["testing"] }
+tokio = { workspace = true, features = ["test-util"] }
+zingod-header-chain = { workspace = true, features = ["testing"] }
+zingod-proto.workspace = true
+tonic.workspace = true
+zingod-source = { workspace = true, features = ["testing"] }
+zingod-chainview = { workspace = true, features = ["testing"] }
+sha2 = "0.10"
+rustix = { version = "1.1", features = ["process"] }
+
+[lints.rust]
+unreachable_pub = "warn"

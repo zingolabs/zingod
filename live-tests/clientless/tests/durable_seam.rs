@@ -3,7 +3,7 @@
 //! - Below `tip + 1 − finalised_depth` → durable index, above → non-finalized state
 //! - Spanning range = stitched from both (only place a served chain can gain a gap, a duplicate,
 //!   or two mismatched halves)
-//! - Shipped depth (1000) out of any regtest fixture's reach → ztest's regtest zainod runs at
+//! - Shipped depth (1000) out of any regtest fixture's reach → ztest's regtest zingod runs at
 //!   `REGTEST_FINALISED_DEPTH` (100)
 
 use std::time::Duration;
@@ -107,7 +107,7 @@ async fn reads_across_the_seam_serve_the_validators_chain() -> Result<()> {
         assert_eq!(
             hex::encode(&served),
             expected,
-            "{height} hash: zaino vs zebrad (floor {floor})"
+            "{height} hash: zingod vs zebrad (floor {floor})"
         );
     }
     Ok(())

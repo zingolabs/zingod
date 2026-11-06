@@ -8,15 +8,13 @@ multiple-versions = "warn"
 wildcards = "allow"
 highlight = "all"
 
-# TLS = rustls + ring only (gRPC termination in zaino-grpc, plain HTTP to the validator)
-# - ring = provider librustzcash and zallet use
-# - aws-lc-rs = rustls' default, opted out
+# TLS = rustls + aws-lc-rs only (gRPC termination in zingod-grpc, mTLS to a validator's indexer)
+# - ring = banned (project policy: no ring crypto anywhere in the graph)
 deny = [
-    { crate = "openssl", reason = "No system TLS stack: TLS is rustls + ring" },
-    { crate = "openssl-sys", reason = "No system TLS stack: TLS is rustls + ring" },
-    { crate = "boring", reason = "No system TLS stack: TLS is rustls + ring" },
-    { crate = "boring-sys", reason = "No system TLS stack: TLS is rustls + ring" },
-    { crate = "native-tls", reason = "No system TLS stack: TLS is rustls + ring" },
-    { crate = "aws-lc-rs", reason = "rustls provider = ring (default-features = false on rustls / tokio-rustls)" },
-    { crate = "aws-lc-sys", reason = "rustls provider = ring (default-features = false on rustls / tokio-rustls)" },
+    { crate = "openssl", reason = "No system TLS stack: TLS is rustls + aws-lc-rs" },
+    { crate = "openssl-sys", reason = "No system TLS stack: TLS is rustls + aws-lc-rs" },
+    { crate = "boring", reason = "No system TLS stack: TLS is rustls + aws-lc-rs" },
+    { crate = "boring-sys", reason = "No system TLS stack: TLS is rustls + aws-lc-rs" },
+    { crate = "native-tls", reason = "No system TLS stack: TLS is rustls + aws-lc-rs" },
+    { crate = "ring", reason = "No ring crypto: rustls / tokio-rustls / rcgen / tonic on their aws_lc_rs features" },
 ]

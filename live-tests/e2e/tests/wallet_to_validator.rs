@@ -1,10 +1,10 @@
-//! In-process librustzcash wallet (faucet + recipient) → zainod pod over gRPC
+//! In-process librustzcash wallet (faucet + recipient) → zingod pod over gRPC
 //!
 //! - Sends + shielding credited per pool, address txids across the durable seam
 //! - Unmined txs: `GetMempoolTx`, `GetMempoolStream`, `GetTransaction` (mempool → mined)
 //! - Address queries: `get_taddress_*` / `get_address_utxos*` (recipient + faucet coinbase)
 //! - Tree state, block-range pool filters
-//! - Validator JSON-RPC = oracle (zainod serves gRPC only)
+//! - Validator JSON-RPC = oracle (zingod serves gRPC only)
 
 use std::time::Duration;
 
@@ -61,21 +61,21 @@ async fn mirrored_mempool(
             .filter_map(|txid| txid.as_str().map(str::to_owned))
             .collect();
         zebrad.sort();
-        let mut zaino: Vec<String> = indexer
+        let mut zingod: Vec<String> = indexer
             .get_mempool_tx(Vec::new())
             .await
             .context("GetMempoolTx, no exclusions")?
             .iter()
             .map(|tx| txid_hex(&tx.txid))
             .collect();
-        zaino.sort();
+        zingod.sort();
         let missing: Vec<&String> = sent.iter().filter(|txid| !zebrad.contains(txid)).collect();
-        if zaino == zebrad && missing.is_empty() {
+        if zingod == zebrad && missing.is_empty() {
             return Ok(zebrad);
         }
         anyhow::ensure!(
             tokio::time::Instant::now() < deadline,
-            "mempool mirror never converged in {READY:?}: zaino {zaino:?}, zebrad {zebrad:?}, \
+            "mempool mirror never converged in {READY:?}: zingod {zingod:?}, zebrad {zebrad:?}, \
              sent but absent from zebrad {missing:?}"
         );
         tokio::time::sleep(MEMPOOL_POLL).await;
@@ -185,7 +185,7 @@ mod wallet {
         let raw = raw.as_str().with_context(|| format!("getrawtransaction {txid}: {raw}"))?;
         assert!(
             hex::encode(&non_finalized_txs[0].data) == raw,
-            "{txid}: zaino's bytes != zebrad's"
+            "{txid}: zingod's bytes != zebrad's"
         );
 
         let utxos =
@@ -235,13 +235,13 @@ mod wallet {
             after.len(),
         );
 
-        let zaino = i64::from(indexer.get_taddress_balance(vec![taddr.clone()]).await?);
+        let zingod = i64::from(indexer.get_taddress_balance(vec![taddr.clone()]).await?);
         let reply =
             vrpc.call_value("getaddressbalance", json!([{ "addresses": [&taddr] }])).await?;
         assert_eq!(
-            (zaino, reply["balance"].as_i64()),
+            (zingod, reply["balance"].as_i64()),
             (SEND_AMOUNT as i64, Some(SEND_AMOUNT as i64)),
-            "{taddr} balance once durable: (zaino, zebrad)",
+            "{taddr} balance once durable: (zingod, zebrad)",
         );
         recipient.sync().await?;
         let transparent = recipient.balances().await?.transparent;
@@ -283,7 +283,7 @@ mod wallet {
         let mempool = mirrored_mempool(&vrpc, &indexer, &[t_txid, ua_txid, sapling_txid]).await?;
         let mut sent = vec![t_txid.to_string(), ua_txid.to_string(), sapling_txid.to_string()];
         sent.sort();
-        assert_eq!(mempool, sent, "mempool (zaino = zebrad) vs the three sends");
+        assert_eq!(mempool, sent, "mempool (zingod = zebrad) vs the three sends");
 
         let suffix = t_txid.as_ref()[8..].to_vec();
         let mut remaining: Vec<String> = indexer
@@ -381,7 +381,7 @@ mod wallet {
         let raw_hex = raw_hex
             .as_str()
             .with_context(|| format!("getrawtransaction {txid} at verbosity 0: {raw_hex}"))?;
-        assert!(hex::encode(&unmined.data) == raw_hex, "{txid}: zaino's bytes != zebrad's");
+        assert!(hex::encode(&unmined.data) == raw_hex, "{txid}: zingod's bytes != zebrad's");
 
         let end = validator.generate_blocks(1).await?;
         indexer.wait_for_block_num(end, READY).await?;
@@ -426,7 +426,7 @@ mod wallet {
         assert_eq!(BlockHeight::from(compact_block.height as u32), end, "last served block");
         let served: Vec<(u64, String)> =
             compact_block.vtx.iter().map(|tx| (tx.index, txid_hex(&tx.txid))).collect();
-        assert_eq!(served, zebrad, "block {tip} (index, txid): zaino vs zebrad");
+        assert_eq!(served, zebrad, "block {tip} (index, txid): zingod vs zebrad");
         for tx in &compact_block.vtx {
             let transparent = (tx.vin.len(), tx.vout.len());
             let txid = txid_hex(&tx.txid);
@@ -467,7 +467,7 @@ mod wallet {
             .sum();
         assert!(utxo_total > 0, "premise: {faucet_taddr} holds coinbase per zebrad: {utxos}");
         let balance = indexer.get_taddress_balance(vec![faucet_taddr.clone()]).await?;
-        assert_eq!(i64::from(balance), utxo_total, "{faucet_taddr} balance: zaino vs Σ zebrad's");
+        assert_eq!(i64::from(balance), utxo_total, "{faucet_taddr} balance: zingod vs Σ zebrad's");
 
         let start = BlockHeight::from(2u32);
         let streamed =
