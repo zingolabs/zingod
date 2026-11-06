@@ -22,7 +22,7 @@ Zingod 1.0 replaces Zaino: a new daemon, not an upgrade. Nothing from a 0.10 ins
 | --- | --- |
 | `network = "Mainnet" \| "Testnet" \| "Regtest"` | `network = "mainnet" \| "testnet" \| "regtest"` |
 | `[validator_settings]` `validator_jsonrpc_listen_address`, `validator_cookie_path`, `validator_user` / `validator_password` | one `[[trusted_validators]]` per validator: `jsonrpc_address`, `cookie_path`, `user` / `password` |
-| `grpc_settings.listen_address`, `[grpc_settings.tls]` | `serve.grpc_listen_address`, `[serve.tls]` (default: self-signed; set `tls = "plaintext"` for a plaintext client or proxy) |
+| `grpc_settings.listen_address`, `[grpc_settings.tls]` | `serve.grpc_listen_address`, `[serve.tls]` (default: self-signed; both paths `"plaintext"` for a plaintext client or proxy) |
 | `metrics_endpoint` | `metrics.listen_address` |
 | `backend`, `zebra_db_path`, `ephemeral_finalised_state`, `json_server_settings`, `storage`, `mempool`, `donation_address` | removed |
 

@@ -78,9 +78,10 @@ validator's `[trusted_validators.indexer_tls]`, named in `zingod.toml`.
 
 ## Health check
 
-The built-in check GETs the public `/readyz` on `127.0.0.1:8137`, over plaintext or, with
-`[serve.tls]`, over HTTPS. It passes while zingod is `serving` or `degraded`, so a fresh node
-reports unhealthy until its indexes reach the tip
+The built-in check GETs the public `/readyz` on `127.0.0.1:8137`, over HTTPS (the certificate
+unchecked: the default pair is self-signed) or, with both `[serve.tls]` paths `"plaintext"`, over
+plaintext. It passes while zingod is `serving` or `degraded`, so a fresh node reports unhealthy
+until its indexes reach the tip
 ([states](../packages/zingod/usage.md#the-admin-listener)). With the gRPC listener on another
 port, override it:
 

@@ -23,7 +23,7 @@ serves light wallets over the lightwalletd `CompactTxStreamer` gRPC
 - **Submission:** `SendTransaction` asks a validator for admission first, then relays until the
   transaction spreads; rejections carry the validator's own JSON-RPC code, as lightwalletd does.
 - **Serving:** TLS on by default (self-signed pair under `state_dir/tls`, or `[serve.tls]`, or
-  `tls = "plaintext"`); `[grpc]` connection, stream and read caps that refuse rather than queue;
+  both its paths `"plaintext"`); `[grpc]` connection, stream and read caps that refuse rather than queue;
   overload detection from CPU and I/O pressure; PROXY protocol from `trusted_proxies`.
 - **Operations:** one state (`provisioning`, `syncing`, `serving`, `degraded`, `held`, `down`) on
   `/readyz`, the public `/status`, the `zingod_state` gauge and the log; `zingod hold` / `resume`

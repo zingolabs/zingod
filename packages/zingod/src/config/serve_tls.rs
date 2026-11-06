@@ -1,59 +1,37 @@
-//! `[serve] tls`: a mode name (`"self-signed"` | `"plaintext"`) or the `[serve.tls]` PEM pair
+//! `[serve.tls]` → how the gRPC listener is served
+//!
+//! - table absent = self-signed pair under `state_dir/tls`
+//! - `cert_path = "plaintext"` + `key_path = "plaintext"` = no TLS (one alone refused)
+//! - any other pair = the operator's PEM files
 
-use std::fmt;
+use std::path::Path;
 
-use serde::de::{self, Deserializer, MapAccess, Visitor};
-use serde::{Deserialize, Serialize, Serializer};
 use zingod_grpc::TlsFiles;
 
-/// How the gRPC listener is served (default = a pair zingod generates under `state_dir/tls`)
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+use crate::error::IndexerError;
+
+/// Path value standing in for "no TLS" in both `[serve.tls]` fields
+const PLAINTEXT: &str = "plaintext";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ServeTls {
-    #[default]
     SelfSigned,
     Plaintext,
     Files(TlsFiles),
 }
 
-const SELF_SIGNED: &str = "self-signed";
-const PLAINTEXT: &str = "plaintext";
-
-impl Serialize for ServeTls {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        match self {
-            Self::SelfSigned => serializer.serialize_str(SELF_SIGNED),
-            Self::Plaintext => serializer.serialize_str(PLAINTEXT),
-            Self::Files(files) => files.serialize(serializer),
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for ServeTls {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        struct ModeOrFiles;
-
-        impl<'de> Visitor<'de> for ModeOrFiles {
-            type Value = ServeTls;
-
-            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                write!(f, "\"{SELF_SIGNED}\", \"{PLAINTEXT}\" or a table with cert_path + key_path")
-            }
-
-            fn visit_str<E: de::Error>(self, mode: &str) -> Result<ServeTls, E> {
-                match mode {
-                    SELF_SIGNED => Ok(ServeTls::SelfSigned),
-                    PLAINTEXT => Ok(ServeTls::Plaintext),
-                    other => Err(E::unknown_variant(other, &[SELF_SIGNED, PLAINTEXT])),
-                }
-            }
-
-            fn visit_map<A: MapAccess<'de>>(self, map: A) -> Result<ServeTls, A::Error> {
-                TlsFiles::deserialize(de::value::MapAccessDeserializer::new(map))
-                    .map(ServeTls::Files)
-            }
-        }
-
-        deserializer.deserialize_any(ModeOrFiles)
+/// `Err` = exactly one of the two paths is `"plaintext"`
+pub(super) fn resolve(table: Option<TlsFiles>) -> Result<ServeTls, IndexerError> {
+    let Some(files) = table else { return Ok(ServeTls::SelfSigned) };
+    let plaintext = |path: &Path| path == Path::new(PLAINTEXT);
+    match (plaintext(&files.cert_path), plaintext(&files.key_path)) {
+        (true, true) => Ok(ServeTls::Plaintext),
+        (false, false) => Ok(ServeTls::Files(files)),
+        _ => Err(IndexerError::Config(format!(
+            "[serve.tls]: cert_path and key_path must both be \"{PLAINTEXT}\" (no TLS) or both \
+             name a PEM file; got cert_path = {:?}, key_path = {:?}",
+            files.cert_path, files.key_path
+        ))),
     }
 }
 
@@ -61,43 +39,31 @@ impl<'de> Deserialize<'de> for ServeTls {
 mod tests {
     use super::*;
 
-    #[derive(Debug, PartialEq, Deserialize, Serialize)]
-    struct Serve {
-        #[serde(default)]
-        tls: ServeTls,
-    }
-
-    /// - absent = self-signed; each mode by name; the table = the pair
-    /// - each form serializes back to the TOML it came from
-    /// - an unknown name or table key is refused naming the choices
+    /// - absent = self-signed; both paths "plaintext" = plaintext; any other pair = the files
+    /// - one path "plaintext" alone is refused naming both fields
     #[test]
-    fn every_form_parses_round_trips_and_a_wrong_one_names_the_choices() {
-        let files = TlsFiles { cert_path: "/c.pem".into(), key_path: "/k.pem".into() };
-        for (toml, expected) in [
-            ("", ServeTls::SelfSigned),
-            ("tls = \"self-signed\"\n", ServeTls::SelfSigned),
-            ("tls = \"plaintext\"\n", ServeTls::Plaintext),
-            ("[tls]\ncert_path = \"/c.pem\"\nkey_path = \"/k.pem\"\n", ServeTls::Files(files)),
+    fn every_table_resolves_and_a_half_plaintext_one_is_refused() {
+        let files =
+            |cert: &str, key: &str| TlsFiles { cert_path: cert.into(), key_path: key.into() };
+        for (table, expected) in [
+            (None, ServeTls::SelfSigned),
+            (Some(files("plaintext", "plaintext")), ServeTls::Plaintext),
+            (Some(files("/c.pem", "/k.pem")), ServeTls::Files(files("/c.pem", "/k.pem"))),
+            // a file called plaintext in a directory = a file
+            (
+                Some(files("/etc/plaintext", "/k.pem")),
+                ServeTls::Files(files("/etc/plaintext", "/k.pem")),
+            ),
         ] {
-            let parsed: Serve = toml::from_str(toml).expect(toml);
-            assert_eq!(parsed.tls, expected, "{toml:?}");
-            let printed = toml::to_string(&parsed).expect("serializes");
-            let round_trip: Serve = toml::from_str(&printed).expect(&printed);
-            assert_eq!(round_trip, parsed, "{toml:?} → {printed:?} → back");
+            let resolved = resolve(table.clone()).map_err(|error| error.to_string());
+            assert_eq!(resolved, Ok(expected), "{table:?}");
         }
-
-        let unknown = toml::from_str::<Serve>("tls = \"none\"\n").expect_err("unknown mode");
-        let message = unknown.to_string();
-        assert!(
-            message.contains("unknown variant `none`") && message.contains("`plaintext`"),
-            "names the modes: {message}"
-        );
-        let partial =
-            toml::from_str::<Serve>("[tls]\ncert_path = \"/c.pem\"\n").expect_err("no key");
-        assert!(partial.to_string().contains("missing field `key_path`"), "{partial}");
-        let bogus =
-            toml::from_str::<Serve>("[tls]\ncert_path = \"/c\"\nkey_path = \"/k\"\nbogus = 1\n")
-                .expect_err("unknown key");
-        assert!(bogus.to_string().contains("unknown field `bogus`"), "{bogus}");
+        for (cert, key) in [("plaintext", "/k.pem"), ("/c.pem", "plaintext")] {
+            let refused = resolve(Some(files(cert, key))).expect_err("half plaintext").to_string();
+            assert!(
+                refused.contains("cert_path and key_path must both") && refused.contains(cert),
+                "{cert} + {key}: {refused}"
+            );
+        }
     }
 }
