@@ -80,7 +80,7 @@ are its own. The [changelog](./CHANGELOG.md) lists every config key and metric f
 
    ```toml
    [snapshot]
-   manifest = "https://snapshots.zingolabs.dev/mainnet/manifest.json"
+   manifest = "https://snapshots.zingolabs.dev/zingod-snapshot-1.0.0/manifest.json"
    ```
 
    The image ships the downloader (`aria2c`); on a host install it must be on `PATH`. Only empty
