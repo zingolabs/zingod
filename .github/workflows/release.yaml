@@ -4,7 +4,8 @@
 #   review
 # - publish: once a reviewer approves the `release` environment, commit + tag as
 #   github-actions[bot], GitHub release from the changelog section, image to Docker Hub
-# - no app, no personal token: GitHub Actions is the one bypass actor on `main` and `v*`
+# - the push is over SSH as the repo's deploy key (`RELEASE_DEPLOY_KEY`): the one identity the
+#   `main` and `v*` rulesets exempt (a ruleset cannot exempt GITHUB_TOKEN)
 name: Release
 
 on:
@@ -98,13 +99,19 @@ jobs:
       # The push refuses a branch that moved since `prepare` ran (non-fast-forward): dispatch again
       - name: Commit, tag, push
         shell: bash
+        env:
+          DEPLOY_KEY: ${{ secrets.RELEASE_DEPLOY_KEY }}
         run: |
           git apply --index "$RUNNER_TEMP/release.patch"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "chore: release $VERSION"
           git tag "v$VERSION"
-          git push origin "HEAD:$GITHUB_REF_NAME" "v$VERSION"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/release && chmod 600 ~/.ssh/release
+          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+          GIT_SSH_COMMAND="ssh -i ~/.ssh/release -o IdentitiesOnly=yes" \
+            git push "git@github.com:$GITHUB_REPOSITORY.git" "HEAD:$GITHUB_REF_NAME" "v$VERSION"
 
       - name: GitHub release
         shell: bash
