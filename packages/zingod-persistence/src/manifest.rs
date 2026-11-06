@@ -329,7 +329,7 @@ mod tests {
             ("name",      24..31, b"heights"),
             ("scope",     31..35, b"test"),
             ("body",      35..37, &[0xaa, 0xbb]),
-            ("crc",       37..41, &0x754e_022fu32.to_le_bytes()),
+            ("crc",       37..41, &0x5c15_67aeu32.to_le_bytes()),
         ];
         for (field, bytes, golden) in fields {
             assert_eq!(encoded.get(bytes.clone()), Some(golden), "{field}, bytes {bytes:?}");

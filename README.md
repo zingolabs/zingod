@@ -73,30 +73,6 @@ Developing: `cargo nextest run --workspace` runs the unit tests with no validato
 - [CONTRIBUTING.md](./CONTRIBUTING.md), [RELEASING.md](./RELEASING.md),
   [live-test guidelines](./live-tests/CLAUDE.md).
 
-### Crate usage guides
-
-All crates live under `packages/`; each guide covers that crate's API, invariants and tests.
-
-- [`zingod`](./packages/zingod/usage.md): the daemon binary.
-- [`zingod-grpc`](./packages/zingod-grpc/usage.md): the gRPC routes and serve stack.
-- [`zingod-grpc-snapshot`](./packages/zingod-grpc-snapshot/usage.md): the one published `GrpcSnapshot` of everything served.
-- [`zingod-chainview`](./packages/zingod-chainview/usage.md): header sync, the mempool view and submission.
-- [`zingod-header-chain`](./packages/zingod-header-chain/usage.md): the Validated Header tree, finality, `validate`.
-- [`zingod-nfs`](./packages/zingod-nfs/usage.md): the non-finalized state.
-- [`zingod-sync`](./packages/zingod-sync/usage.md): the finalized stream and every index writer's loop.
-- [`zingod-persistence`](./packages/zingod-persistence/usage.md): the persistence port, `DiskEngine`, the on-disk layout and crash contract.
-- [`zingod-index-compact-block`](./packages/zingod-index-compact-block/usage.md): height → gRPC-framed compact block.
-- [`zingod-index-utxo-set`](./packages/zingod-index-utxo-set/usage.md): unspent outputs' values (compact-block fees).
-- [`zingod-index-tree-state`](./packages/zingod-index-tree-state/usage.md): commitment-tree states and subtree roots.
-- [`zingod-index-transparent-address`](./packages/zingod-index-transparent-address/usage.md): the t-address RPCs.
-- [`zingod-internal-block-hash-to-height`](./packages/zingod-internal-block-hash-to-height/usage.md): the hash → height locator.
-- [`zingod-internal-txid-location`](./packages/zingod-internal-txid-location/usage.md): where each mined transaction sits.
-- [`zingod-source`](./packages/zingod-source/usage.md): the `ChainDataSource` port, its JSON-RPC and indexer-gRPC clients, `MockChain`.
-- [`zingod-traffic`](./packages/zingod-traffic/usage.md): one scheduler for every request to validators and peers.
-- [`zingod-peers`](./packages/zingod-peers/usage.md): zebra-network embedded as Zingod's p2p layer.
-- [`zingod-primitives`](./packages/zingod-primitives/usage.md): domain types and protocol constants.
-- [`zingod-proto`](./packages/zingod-proto/README.md): vendored lightwallet and Zebra indexer protocols.
-
 ## Security disclosure
 
 Report security issues privately, never in a public issue: see

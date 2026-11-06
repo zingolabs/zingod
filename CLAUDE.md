@@ -139,15 +139,12 @@ a fact into a second file, nor restate what code, `--help`, rustdoc or a metric'
 HELP text already carries. No status tables, phase lists, migration history or
 "before/after" prose: the code is the current shape, history goes in commit messages.
 
-Each guide is indexed from the root `README.md`'s "Crate usage guides" section.
-
 When a change adds or alters a crate's **public capability** — a new port,
 service, config knob, public method, or a behavioural contract consumers rely on
 — update that crate's guide: fold it into the relevant existing section, or add
-one if none fits. If the crate has no guide yet, create it and add it to the
-README index. This mirrors the CHANGELOG discipline: the CHANGELOG records *what
-changed*, the guide records *how to use it*, and neither substitutes for the
-other. Purely internal refactors need no guide edit.
+one if none fits. If the crate has no guide yet, create it. This mirrors the CHANGELOG
+discipline: the CHANGELOG records *what changed*, the guide records *how to use it*, and
+neither substitutes for the other. Purely internal refactors need no guide edit.
 
 ## Heavy proptest run before you're done
 

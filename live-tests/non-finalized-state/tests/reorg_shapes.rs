@@ -64,7 +64,11 @@ async fn every_index_serves_the_validators_chain_after_a_reorg(
         let hash = BlockHash::from_wire(&block.hash).context("served hash is 32 bytes")?;
         assert_eq!(block.height, u64::from(height), "range order (fork {fork})");
         let hash = Some(hash.to_string());
-        assert_eq!(hash.as_deref(), truth.as_str(), "{height} hash: zingod vs zebrad (fork {fork})");
+        assert_eq!(
+            hash.as_deref(),
+            truth.as_str(),
+            "{height} hash: zingod vs zebrad (fork {fork})"
+        );
     }
     for pair in served.windows(2) {
         let (link, parent) = (hex::encode(&pair[1].prev_hash), hex::encode(&pair[0].hash));

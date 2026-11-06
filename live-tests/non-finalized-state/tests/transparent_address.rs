@@ -112,7 +112,10 @@ async fn address_index_moves_orphaned_coinbase_to_the_winning_miner() -> Result<
             zebrad_txs.into_iter().map(|(_, id, height)| (id, height)).collect();
         served.sort();
         tx_truth.sort();
-        assert_eq!(served, tx_truth, "{address} txs (txid, height) in [1, {tip}]: zingod vs zebrad");
+        assert_eq!(
+            served, tx_truth,
+            "{address} txs (txid, height) in [1, {tip}]: zingod vs zebrad"
+        );
 
         let orphaned: i64 = utxos_before
             .iter()
