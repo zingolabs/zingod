@@ -37,10 +37,11 @@ docker run -d --name zingod -p 8137:8137 \
   zingodevops/zingod
 ```
 
-**3. Wait for the indexes.** The first start builds every index from the validator, or fills
-them from a published [index snapshot](./docs/running.md#index-snapshot). The gRPC port also
-answers plain HTTPS (self-signed by default): `/status` reports the [state](./docs/running.md#states) (`syncing`, then
-`serving`) and the tip, and `/readyz` is 200 once wallets can be served:
+**3. Wait for the indexes.** The first start builds every index from the validator: about an hour
+on NVMe with the validator on the same host, longer over a network. Or skip the sync and
+[bootstrap from a snapshot](#migrating-from-zaino). The gRPC port also answers plain HTTPS
+(self-signed by default): `/status` reports the [state](./docs/running.md#states) (`syncing`,
+then `serving`) and the tip, and `/readyz` is 200 once wallets can be served:
 
 ```sh
 curl -sk https://localhost:8137/status
@@ -61,6 +62,31 @@ zingod start
 
 Developing: `cargo nextest run --workspace` runs the unit tests with no validator; see
 [CONTRIBUTING.md](./CONTRIBUTING.md) and [Testing](./docs/testing.md).
+
+## Migrating from Zaino
+
+Zingod 1.0 replaces Zaino 0.10. It is a new daemon, not an upgrade: nothing from a 0.10 install is
+read, and every name changed (binary, image, config path, `ZINGOD_CONFIG_*` overrides, `zingod_*`
+metrics). The [1.0.0 changelog](./CHANGELOG.md) maps each 0.10 config key and metric to its
+replacement.
+
+1. Write a new config with `zingod generate-config` and carry over your validator address and
+   credentials. A 0.10 key that no longer exists refuses to start.
+2. Delete the 0.10 `storage.database` directory. Zingod keeps one directory per index under
+   `/var/lib/zingod/indexes` (the image) or `$XDG_CACHE_HOME/zingod/indexes`.
+3. Either let the first start sync from your validator, or download the indexes: with a fast
+   connection, a published snapshot bootstraps every index before boot. Add to `zingod.toml`:
+
+   ```toml
+   [snapshot]
+   manifest = "https://snapshots.zingolabs.dev/zingod-snapshot-1.1.0/manifest.json"
+   ```
+
+   The image ships the downloader (`aria2c`); on a host install it must be on `PATH`. Only empty
+   index directories are filled, each archive's hash is checked, and a restart resumes
+   ([index snapshot](./docs/running.md#index-snapshot)).
+4. Point dashboards at the `zingod_*` families and send node JSON-RPC to the validator: Zingod
+   serves gRPC only.
 
 ## Documentation
 
