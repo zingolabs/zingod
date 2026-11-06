@@ -1,6 +1,6 @@
 # Changelog
 
-Every Zaino crate ships at one shared version, so each section below covers the whole
+Every Zingod crate ships at one shared version, so each section below covers the whole
 workspace. [Knope](https://knope.tech) writes each section at release from the `.changeset/`
 files merged since the last one ([RELEASING.md](./RELEASING.md)). Under 0.x, a breaking
 change bumps the minor version and everything else bumps the patch version.
@@ -102,7 +102,7 @@ In the container image `<cache dir>/zaino` is `/var/lib/zaino`.
 **Migration:** delete the old `storage.database` directory. A first start syncs each enabled
 index from the trusted validators, or fills empty ones from `[snapshot]`.
 
-#### `zainod`: Zaino serves no JSON-RPC
+#### `zainod`: Zingod serves no JSON-RPC
 
 The JSON-RPC server, its cookie authentication and port 8237 are gone, with every method it
 served (`getblock`, `getrawtransaction`, `z_gettreestate`, `getaddressdeltas`, `getblockdeltas`,
@@ -307,7 +307,7 @@ Per entry:
 - `validator_client = "grpc"` (default `legacy_rpc`) fetches blocks over each validator's
   `indexer_address` as raw bytes instead of hex inside JSON, everything else over JSON-RPC. Every
   entry then needs `indexer_address`, and a zebrad serving the indexer's `GetBlockRange`
-  (Zaino's zebra fork).
+  (Zingod's zebra fork).
 
 #### `zainod`: `[p2p]` peers keep the tip and mempool serving through a validator outage
 
@@ -320,7 +320,7 @@ zebra-network. It serves no peer (listener on loopback, no services advertised).
 - **Finality:** moves on peers' word once outbound peers in more than 5 netgroups carry the chain
   and its difficulty has not collapsed. Otherwise it waits for a trusted validator.
 - **Mempool:** each outbound peer's mempool is polled every 5 s. A transaction more than 2/3 of
-  them list, from more than 5 netgroups, is served once it passes Zaino's consensus checks against
+  them list, from more than 5 netgroups, is served once it passes Zingod's consensus checks against
   the served UTXO set (needs `index.compact_block`).
 - **Submission:** `SendTransaction` relays through the peer set (see the submission entry).
 - With every trusted validator down and a best block less than 24 target spacings old (30 minutes
@@ -336,7 +336,7 @@ zebra-network. It serves no peer (listener on loopback, no services advertised).
 
 #### `zainod`: `SendTransaction` checks admission first, then relays until the transaction spreads
 
-- zainod first asks one trusted validator holding the tip for `checkadmission` (Zaino's zebra
+- zainod first asks one trusted validator holding the tip for `checkadmission` (Zingod's zebra
   fork: `sendrawtransaction`'s checks, fee policy and mempool conflicts, nothing admitted or
   relayed). A refusal reaches the wallet at once and nothing is relayed. An admissible
   transaction is answered `OK` at once.

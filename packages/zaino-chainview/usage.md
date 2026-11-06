@@ -151,7 +151,7 @@ Two steps, both `Result<_, SubmitError>`; the protocol is
 [architecture §6](../../docs/architecture.md#6-submission).
 
 - `ChainView::validate_transaction(raw)` → `ValidatedTransaction`: precheck + check below,
-  nothing relayed (a refusal never leaves Zaino)
+  nothing relayed (a refusal never leaves Zingod)
 - `ChainView::broadcast_transaction(validated)` → `TxId`: the relay job; only a
   `ValidatedTransaction` goes in, so no relay skips the checks
 

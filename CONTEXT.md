@@ -1,8 +1,8 @@
-# Zaino glossary
+# Zingod glossary
 
 One word per concept; names, docs and logs use these. System design: [docs/architecture.md](docs/architecture.md).
 
-## Zaino terms
+## Zingod terms
 
 | Term | Meaning | Not / avoid |
 | --- | --- | --- |
@@ -26,10 +26,10 @@ One word per concept; names, docs and logs use these. System design: [docs/archi
 | **Trusted validator** | A validator the operator configured (`[[trusted_validators]]`, `TrustedValidator*`) | endpoint, node, member |
 | **Peer** | Any node on the Zcash p2p network, unauthenticated (`Peer*`) | validator |
 | **Member** | `zaino-traffic` balancer only: one trusted validator, or the whole peer set (`MemberId`) | for a trusted validator anywhere else |
-| **Indexer** | Zaino as a whole (`IndexerError`, `zainod`) | one index |
+| **Indexer** | Zingod as a whole (`IndexerError`, `zainod`) | one index |
 | **Index** | One served data index (`Index*`, `IndexKind`) | indexer |
 | **ZebraIndexer** | zebrad's indexer gRPC: blocks + push streams (`ZebraIndexer*`, `indexer_address`) | "indexer" alone |
-| **`zaino-index-*` / `zaino-internal-*`** | Crates of indexes gRPC serves / indexes only Zaino reads (block hash → height) | — |
+| **`zaino-index-*` / `zaino-internal-*`** | Crates of indexes gRPC serves / indexes only Zingod reads (block hash → height) | — |
 | **Locator / quantity** | Locator = height, tx / output / subtree index: big-endian. Quantity = amount, size, count, time: little-endian ([rule](CLAUDE.md#disk-and-wire-boundaries-named-functions-not-fromtryfrom)) | — |
 
 ## Chains and pools

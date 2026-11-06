@@ -4,7 +4,7 @@ default: minor
 
 # `zainod`: `SendTransaction` checks admission first, then relays until the transaction spreads
 
-- zainod first asks one trusted validator holding the tip for `checkadmission` (Zaino's zebra
+- zainod first asks one trusted validator holding the tip for `checkadmission` (Zingod's zebra
   fork: `sendrawtransaction`'s checks, fee policy and mempool conflicts, nothing admitted or
   relayed). A refusal reaches the wallet at once and nothing is relayed. An admissible
   transaction is answered `OK` at once.

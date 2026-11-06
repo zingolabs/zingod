@@ -43,7 +43,7 @@ default. In outline:
 | `[metrics]`              | the admin listener's `listen_address` (unset = off; see [Network exposure](#network-exposure)) |
 | `[[trusted_validators]]` | one table per validator: address, credentials, timeouts, link budget, `indexer_address`, `priority` tier |
 | `[submission]`           | when `SendTransaction` relays again ([architecture §6](./architecture.md#6-submission))    |
-| `[p2p]`                  | Zaino's own Zcash peers, off by default                                                     |
+| `[p2p]`                  | Zingod's own Zcash peers, off by default                                                    |
 | `[serve]`                | gRPC listen address, `[serve.tls]`, `state_dir`, `hold_goaway_delay_secs`                   |
 | `[grpc]`                 | connection, stream and read caps, connection lifetimes, `trusted_proxies`, `[grpc.overload]` |
 | `[sync]`                 | the shared block-fetch pipeline and finality depth                                          |
@@ -59,7 +59,7 @@ that survives one being down.
 
 - `legacy_rpc` (default): JSON-RPC for everything, zebrad or zcashd.
 - `grpc`: blocks over zebrad's indexer gRPC at each entry's `indexer_address`, the rest over
-  JSON-RPC. It needs a zebrad whose indexer serves `GetBlockRange` (Zaino's zebra fork; stock
+  JSON-RPC. It needs a zebrad whose indexer serves `GetBlockRange` (Zingod's zebra fork; stock
   zebrad lacks it). An entry without `indexer_address` fails boot.
 
 The indexer gRPC is plaintext unless `[trusted_validators.indexer_tls]` sets up mutual TLS.
@@ -331,7 +331,7 @@ stream {
 }
 ```
 
-With HAProxy, use `server zaino 127.0.0.1:8137 send-proxy-v2` in a `mode tcp` backend. A proxy
+With HAProxy, use `server zingod 127.0.0.1:8137 send-proxy-v2` in a `mode tcp` backend. A proxy
 that cannot send the header needs `trusted_proxies` empty and `max_connections_per_ip` raised to
 `max_connections`.
 

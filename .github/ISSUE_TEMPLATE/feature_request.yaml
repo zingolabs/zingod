@@ -10,14 +10,14 @@ body:
         Feature requests help us understand what the community needs.
 
   # Security gate — do NOT remove.
-  # Vulnerabilities must be reported privately via https://github.com/zingolabs/zaino/security
+  # Vulnerabilities must be reported privately via https://github.com/zingolabs/zingod/security
   - type: checkboxes
     id: not_a_vulnerability
     attributes:
       label: Security check
       description: >
         If this is a security vulnerability, **stop here** and
-        [report it privately](https://github.com/zingolabs/zaino/security) instead.
+        [report it privately](https://github.com/zingolabs/zingod/security) instead.
         Public issues must not contain vulnerability details.
       options:
         - label: This issue is **not** a security vulnerability.
@@ -27,7 +27,7 @@ body:
     id: usage
     attributes:
       label: Usage mode
-      description: How are you using Zaino?
+      description: How are you using Zingod?
       options:
         - zainod (running the daemon)
         - Library integration (using zaino-* crates)
@@ -62,7 +62,7 @@ body:
     id: area
     attributes:
       label: Area
-      description: Which part of Zaino does this relate to?
+      description: Which part of Zingod does this relate to?
       multiple: true
       options:
         - gRPC API (CompactTxStreamer)

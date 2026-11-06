@@ -7,7 +7,7 @@ repository.workspace = true
 homepage.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "One published GrpcSnapshot of what Zaino serves: chain, indexes, mempool, validators"
+description = "One published GrpcSnapshot of what Zingod serves: chain, indexes, mempool, validators"
 
 [features]
 # `GrpcSnapshots::fixed`

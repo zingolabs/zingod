@@ -83,7 +83,7 @@ dependency on a validator index Zebra need not have. The path with no validator 
 ## Serve stack
 
 hyper-util's HTTP/2 server around the path dispatch, not `tonic::transport::Server`, so the
-accept loop is zaino's. Outermost first, per connection after the first three:
+accept loop is Zingod's. Outermost first, per connection after the first three:
 
 ```text
 accept ─ total cap ─ PROXY header (trusted peers) ─ per-client cap ─ TLS ─ h2 / HTTP/1.1

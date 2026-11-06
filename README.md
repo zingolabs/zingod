@@ -1,15 +1,15 @@
-# Zaino
+# Zingod
 
-Zaino is a Zcash indexer written in Rust. `zainod` follows the chain from one or more trusted
+Zingod is a Zcash indexer written in Rust. `zainod` follows the chain from one or more trusted
 [Zebra](https://github.com/ZcashFoundation/zebra) validators and, optionally, Zcash p2p peers,
 builds its own indexes, and serves light wallets over the lightwalletd-compatible
 `CompactTxStreamer` gRPC service.
 
-Validation stays in Zebra and indexing moves to Zaino: the two run as separate processes, on
+Validation stays in Zebra and indexing moves to Zingod: the two run as separate processes, on
 separate hosts if you like, and a new index needs no change to the validator
 ([who owns what](./docs/architecture.md#1-who-owns-what)).
 
-[![latest release](https://img.shields.io/github/v/tag/zingolabs/zaino?filter=v*&label=latest%20release)](https://github.com/zingolabs/zaino/tags)
+[![latest release](https://img.shields.io/github/v/tag/zingolabs/zingod?filter=v*&label=latest%20release)](https://github.com/zingolabs/zingod/tags)
 
 ## Quick start
 
@@ -52,7 +52,7 @@ All crates live under `packages/`; each guide covers that crate's API, invariant
 - [`zaino-internal-txid-location`](./packages/zaino-internal-txid-location/usage.md): where each mined transaction sits.
 - [`zaino-source`](./packages/zaino-source/usage.md): the `ChainDataSource` port, its JSON-RPC and indexer-gRPC clients, `MockChain`.
 - [`zaino-traffic`](./packages/zaino-traffic/usage.md): one scheduler for every request to validators and peers.
-- [`zaino-peers`](./packages/zaino-peers/usage.md): zebra-network embedded as Zaino's p2p layer.
+- [`zaino-peers`](./packages/zaino-peers/usage.md): zebra-network embedded as Zingod's p2p layer.
 - [`zaino-primitives`](./packages/zaino-primitives/usage.md): domain types and protocol constants.
 - [`zaino-proto`](./packages/zaino-proto/README.md): vendored lightwallet and Zebra indexer protocols.
 

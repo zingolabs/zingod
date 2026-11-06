@@ -1,6 +1,6 @@
 # Testing
 
-Zaino has two kinds of test. The unit and model tests in `packages/*` run on the host with
+Zingod has two kinds of test. The unit and model tests in `packages/*` run on the host with
 `cargo nextest run --workspace` and need no validator, although they are not network-free
 (`zaino-grpc`, for example, binds a loopback socket). Their blocks, headers and validators come
 from one builder, [`MockChain`](../packages/zaino-source/usage.md#testing-mockchain). The live

@@ -1,6 +1,6 @@
 # `zaino-traffic` — usage
 
-One scheduler for every request Zaino sends to its trusted validators and to peers
+One scheduler for every request Zingod sends to its trusted validators and to peers
 ([architecture §9](../../docs/architecture.md#9-talking-to-validators-and-peers)): one member
 table, one hedge / failover / blame policy, and the poll loop of every trusted validator. Per
 member, one permit is the poll's alone (nothing delays tip following); then three lanes, control

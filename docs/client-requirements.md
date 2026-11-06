@@ -8,7 +8,7 @@ than not answering. Read at the source; references name a function or file, not 
 - **pepper-sync**: `zingolib/pepper-sync`, all traffic through `client/fetch.rs`. It backs
   zingolib and Zingo mobile.
 
-Where Zaino answers each method from: [rpc_api.md](./rpc_api.md).
+Where Zingod answers each method from: [rpc_api.md](./rpc_api.md).
 
 ## The call matrix
 
@@ -35,12 +35,12 @@ a librustzcash wallet cannot complete a single sync batch without it.
 
 `GetBlockRangeNullifiers` and `GetTaddressTxids` are deprecated aliases, **marked TODO: REMOVE**
 at every site. pepper-sync calls both on every sync and treats any non-OK status as a fatal
-`SyncError`, so without them no pepper-sync wallet syncs against Zaino. They go when pepper-sync
+`SyncError`, so without them no pepper-sync wallet syncs against Zingod. They go when pepper-sync
 calls the replacements.
 
 - `GetBlockRangeNullifiers` is superseded by `GetBlockRange` with shielded `poolTypes`, a
   superset. Its shape is not a `poolTypes` subset (it drops `chainMetadata` and sapling outputs,
-  and keeps only each action's nullifier), so Zaino re-projects the stored compact blocks rather
+  and keeps only each action's nullifier), so Zingod re-projects the stored compact blocks rather
   than keep a second projection that could disagree.
 - `GetTaddressTxids` is misnamed and deprecated by the proto itself ("please use
   GetTaddressTransactions instead").
@@ -51,7 +51,7 @@ calls the replacements.
 an empty `TreeState.{orchard,ironwood}_tree` to an empty commitment tree with no error
 (`TreeState::orchard_tree` / `ironwood_tree` in `zcash_client_backend/src/proto.rs`;
 `pepper-sync/src/witness.rs`), indistinguishable from a pre-activation height; `GetSubtreeRoots`
-is swallowed into `Vec::new()` the same way. So Zaino serves each pool from its activation on as
+is swallowed into `Vec::new()` the same way. So Zingod serves each pool from its activation on as
 the real tree (`000000` when empty), and `""` only below activation
 ([tree-state guide](../packages/zaino-index-tree-state/usage.md#serving)).
 
@@ -67,7 +67,7 @@ returns zero roots, so a session makes six calls, not three.
 **`GetBlockRange` has no client-side size limit.** pepper-sync requests a whole scan range in
 one call, and scan ranges follow subtree boundaries (2^16 *notes*, not blocks): a mainnet wallet
 sync asked for 158,853 blocks in one call. Any server-side maximum breaks zingolib for some
-birthday, and because it retries a stream error unboundedly, it presents as a hang. So Zaino has
+birthday, and because it retries a stream error unboundedly, it presents as a hang. So Zingod has
 no range cap, and never answers short: a wallet given fewer blocks than it asked for reads that
 as the end of the chain.
 
@@ -76,7 +76,7 @@ as the end of the chain.
 
 **pepper-sync refuses a server below protocol v0.5.0.** It rejects any
 `lightwalletProtocolVersion` below `v0.5.0`, an empty one included
-(`check_lightwallet_protocol_version` in `pepper-sync/src/client.rs`). Zaino reports its vendored
+(`check_lightwallet_protocol_version` in `pepper-sync/src/client.rs`). Zingod reports its vendored
 protos' release (`zaino_proto::LIGHTWALLET_PROTOCOL_VERSION`), so a new upstream release moves
 the reported version with it.
 
@@ -88,12 +88,12 @@ per round trip, until `gap_limit` consecutive addresses come back empty (`addres
 address a wallet derives, which are used, and the order that links them to one wallet.
 
 The private alternative: request the `TRANSPARENT` pool in `BlockRange.poolTypes` and match
-scripts locally (lightwallet-protocol v0.4.0). Zaino serves it. `CompactTxIn` carries no prevout
+scripts locally (lightwallet-protocol v0.4.0). Zingod serves it. `CompactTxIn` carries no prevout
 value, so compact blocks alone cannot yield a transparent *balance*: the address RPCs stay even
 once clients move to the private path. As lightwalletd does, a coinbase's `vin` is omitted (a
 client detects it by `CompactTx.index == 0`).
 
-> **Never silently prune a requested `TRANSPARENT`.** If Zaino cannot serve it, return an
+> **Never silently prune a requested `TRANSPARENT`.** If Zingod cannot serve it, return an
 > error. Silent pruning costs a user their privacy with nothing in the logs.
 
 ## The contract is the proto, not a ZIP

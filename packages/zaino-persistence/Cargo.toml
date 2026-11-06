@@ -7,7 +7,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
-description = "The persistence port every Zaino index stores through, and DiskEngine behind it: positional files for sequences, an LSM for maps, one manifest commit."
+description = "The persistence port every Zingod index stores through, and DiskEngine behind it: positional files for sequences, an LSM for maps, one manifest commit."
 
 [features]
 # `fs::SimFs` (crash-state enumeration)

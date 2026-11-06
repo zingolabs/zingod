@@ -13,7 +13,7 @@ zebra-network. It serves no peer (listener on loopback, no services advertised).
 - **Finality:** moves on peers' word once outbound peers in more than 5 netgroups carry the chain
   and its difficulty has not collapsed. Otherwise it waits for a trusted validator.
 - **Mempool:** each outbound peer's mempool is polled every 5 s. A transaction more than 2/3 of
-  them list, from more than 5 netgroups, is served once it passes Zaino's consensus checks against
+  them list, from more than 5 netgroups, is served once it passes Zingod's consensus checks against
   the served UTXO set (needs `index.compact_block`).
 - **Submission:** `SendTransaction` relays through the peer set (see the submission entry).
 - With every trusted validator down and a best block less than 24 target spacings old (30 minutes

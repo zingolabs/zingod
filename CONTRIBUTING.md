@@ -1,18 +1,18 @@
-# Contributing to Zaino
+# Contributing to Zingod
 
 Contributions of code, documentation, bug reports and feature requests are
-welcome. To run Zaino, start with [running zainod](./docs/running.md).
+welcome. To run Zingod, start with [running zainod](./docs/running.md).
 
 ## Security issues
 
 Do not open a public issue. Report privately via
-[GitHub security advisories](https://github.com/zingolabs/zaino/security) or
+[GitHub security advisories](https://github.com/zingolabs/zingod/security) or
 email zingodisclosure@proton.me.
 
 ## Bug reports and feature requests
 
-Open a GitHub [issue](https://github.com/zingolabs/zaino/issues) using one of
-the templates. For bugs, include the Zaino version or commit, the zebrad
+Open a GitHub [issue](https://github.com/zingolabs/zingod/issues) using one of
+the templates. For bugs, include the Zingod version or commit, the zebrad
 version, your OS, and your config.
 
 ## Communication
@@ -23,7 +23,7 @@ The ZingoLabs [Matrix channel](https://matrix.to/#/!cVsptZxBgWgmxWlHYB:matrix.or
 
 ## Pull requests
 
-- Open PRs against [`dev`](https://github.com/zingolabs/zaino/tree/dev), from a
+- Open PRs against [`dev`](https://github.com/zingolabs/zingod/tree/dev), from a
   personal fork if you are a new contributor. Keep a PR in `Draft` until it is
   ready for review.
 - Run the lints before pushing ([Development](#development)).
