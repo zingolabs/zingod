@@ -27,7 +27,7 @@ resolver = "2"
 
 [workspace.package]
 # Lockstep: every crate ships at this version (the `zingod-*` entries below match it)
-version = "0.11.0-alpha.6"
+version = "1.0.0"
 authors = ["Zingo Lab Cyan"]
 repository = "https://github.com/zingolabs"
 homepage = "https://www.zingolabs.org/"
@@ -98,37 +98,37 @@ dirs = "6"
 # Test
 tempfile = "3.2"
 # Domain vocabulary (heights, hashes, blocks, transactions)
-zingod-primitives = { path = "packages/zingod-primitives", version = "0.11.0-alpha.6" }
-zingod-persistence = { path = "packages/zingod-persistence", version = "0.11.0-alpha.6" }
-zingod-sync = { path = "packages/zingod-sync", version = "0.11.0-alpha.6" }
+zingod-primitives = { path = "packages/zingod-primitives", version = "1.0.0" }
+zingod-persistence = { path = "packages/zingod-persistence", version = "1.0.0" }
+zingod-sync = { path = "packages/zingod-sync", version = "1.0.0" }
 # Non-finalized state: fetch, folds above the durable root, the finalized stream
-zingod-nfs = { path = "packages/zingod-nfs", version = "0.11.0-alpha.6" }
+zingod-nfs = { path = "packages/zingod-nfs", version = "1.0.0" }
 # Validated Header tree: most-work tip above a trusted anchor
-zingod-header-chain = { path = "packages/zingod-header-chain", version = "0.11.0-alpha.6" }
+zingod-header-chain = { path = "packages/zingod-header-chain", version = "1.0.0" }
 # Validator source: `ChainDataSource` port + its JSON-RPC and indexer-gRPC clients
-zingod-source = { path = "packages/zingod-source", version = "0.11.0-alpha.6" }
-zingod-proto = { path = "packages/zingod-proto", version = "0.11.0-alpha.6" }
-zingod-peers = { path = "packages/zingod-peers", version = "0.11.0-alpha.6" }
-zingod-traffic = { path = "packages/zingod-traffic", version = "0.11.0-alpha.6" }
-zingod-chainview = { path = "packages/zingod-chainview", version = "0.11.0-alpha.6" }
-zingod-grpc-snapshot = { path = "packages/zingod-grpc-snapshot", version = "0.11.0-alpha.6" }
-zingod-grpc = { path = "packages/zingod-grpc", version = "0.11.0-alpha.6" }
+zingod-source = { path = "packages/zingod-source", version = "1.0.0" }
+zingod-proto = { path = "packages/zingod-proto", version = "1.0.0" }
+zingod-peers = { path = "packages/zingod-peers", version = "1.0.0" }
+zingod-traffic = { path = "packages/zingod-traffic", version = "1.0.0" }
+zingod-chainview = { path = "packages/zingod-chainview", version = "1.0.0" }
+zingod-grpc-snapshot = { path = "packages/zingod-grpc-snapshot", version = "1.0.0" }
+zingod-grpc = { path = "packages/zingod-grpc", version = "1.0.0" }
 # p2p layer (zingod-peers): zebra v7.0.0 (mainnet NU7) on the same librustzcash/orchard/sapling forks patched below
 zebra-chain = { git = "https://github.com/elicbarbieri/zebra.git", rev = "ebabeee504850bb9dc0b9a76de158dbc68503220", version = "15.0.0" }
 zebra-network = { git = "https://github.com/elicbarbieri/zebra.git", rev = "ebabeee504850bb9dc0b9a76de158dbc68503220", version = "15.0.0" }
 zebra-test = { git = "https://github.com/elicbarbieri/zebra.git", rev = "ebabeee504850bb9dc0b9a76de158dbc68503220", version = "5.0.0" }
 # Height → gRPC-framed compact block, served as contiguous mmap spans
-zingod-index-compact-block = { path = "packages/zingod-index-compact-block", version = "0.11.0-alpha.6" }
+zingod-index-compact-block = { path = "packages/zingod-index-compact-block", version = "1.0.0" }
 # Block hash <-> height: the locator every by-hash request resolves through.
-zingod-internal-block-hash-to-height = { path = "packages/zingod-internal-block-hash-to-height", version = "0.11.0-alpha.6" }
+zingod-internal-block-hash-to-height = { path = "packages/zingod-internal-block-hash-to-height", version = "1.0.0" }
 # Txid -> mined location: where GetTransaction finds a mined transaction's block
-zingod-internal-txid-location = { path = "packages/zingod-internal-txid-location", version = "0.11.0-alpha.6" }
+zingod-internal-txid-location = { path = "packages/zingod-internal-txid-location", version = "1.0.0" }
 # Outpoint -> value: each transaction's fee for compact blocks
-zingod-index-utxo-set = { path = "packages/zingod-index-utxo-set", version = "0.11.0-alpha.6" }
+zingod-index-utxo-set = { path = "packages/zingod-index-utxo-set", version = "1.0.0" }
 # Height → commitment-tree state, subtree roots (any historical frontier, no hashing)
-zingod-index-tree-state = { path = "packages/zingod-index-tree-state", version = "0.11.0-alpha.6" }
+zingod-index-tree-state = { path = "packages/zingod-index-tree-state", version = "1.0.0" }
 # Transparent address → receives + their spends (two maps, composed per query)
-zingod-index-transparent-address = { path = "packages/zingod-index-transparent-address", version = "0.11.0-alpha.6" }
+zingod-index-transparent-address = { path = "packages/zingod-index-transparent-address", version = "1.0.0" }
 
 
 config = { version = "0.15", default-features = false, features = ["toml"] }

@@ -50,8 +50,10 @@ SHA=$(gh run list -w ci.yml -b main -s success -L1 --json headSha -q '.[0].headS
 # 2. release branch at that commit
 git fetch origin && git switch -c release/1.0 "$SHA" && git push -u origin release/1.0
 
-# 3. bump + CHANGELOG.md from .changeset/, commit, push, GitHub release + tag v1.0.0
-GITHUB_TOKEN=$(gh auth token) knope release
+# 3. bump + CHANGELOG.md from .changeset/, commit, push, GitHub release + tag
+#    (1.0.0 only: the version is already set, so `--override-version 1.0.0` stops Knope
+#    bumping it to 2.0.0 for the breaking change files)
+GITHUB_TOKEN=$(gh auth token) knope release --override-version 1.0.0
 
 # 4. carry the bump and the consumed change files back to main (needs one approval)
 gh pr create -B main -f && gh pr merge --auto --merge
