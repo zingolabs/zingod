@@ -1,4 +1,4 @@
-# zingod image on Knope's `vX.Y.Z` release tag (RELEASING.md)
+# GitHub release + zingod image on Knope's `vX.Y.Z` tag (RELEASING.md)
 name: Release
 
 on:
@@ -11,6 +11,32 @@ permissions:
   contents: read
 
 jobs:
+  release:
+    name: GitHub release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      # Notes = this version's CHANGELOG.md section (Knope wrote it in the tagged commit)
+      - name: Release notes from CHANGELOG.md
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '
+            /^## / { on = ($2 == v) ; next }
+            on { print }
+          ' CHANGELOG.md > notes.md
+          test -s notes.md || { echo "CHANGELOG.md has no ## $version section" >&2; exit 1; }
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease=""
+          case "$GITHUB_REF_NAME" in *-*) prerelease="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" --title "${GITHUB_REF_NAME#v}" --notes-file notes.md $prerelease
+
   docker:
     name: zingod image
     runs-on: ubuntu-latest
