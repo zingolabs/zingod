@@ -86,17 +86,14 @@ its own flags such as `--rerun` and `--cluster` MUST come before them.
 
 ## The `ztest` CLI
 
-Both live workspaces depend on ztest by path: `live-tests/` on a `ztest` checkout beside this
-repository, `live-tests/sync/` on a `ztest-status` checkout beside it (each `Cargo.toml` names
-the path). Install the CLI from the `ztest` checkout:
+Both live workspaces depend on the published `ztest` crate (`ztest = "0.2.0"` in each
+`Cargo.toml`). Install the matching CLI from crates.io:
 
 ```sh
-git clone https://github.com/zingolabs/ztest ../ztest   # from the repo root
-cargo install --locked --path ../ztest/cli
+cargo install --locked ztest_cli
 ```
 
-The sync profiles also need a `zingolib` checkout beside `ztest-status`, and they build zebrad's
-image from a `zebra` checkout beside this repository.
+The sync profiles build zebrad's image from a `zebra` checkout beside this repository.
 
 ## Cluster setup
 
