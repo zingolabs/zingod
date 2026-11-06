@@ -1,4 +1,4 @@
-//! Every index Zaino folds, and each one's store declaration
+//! Every index Zingod folds, and each one's store declaration
 
 use zaino_persistence::{Schema, Tables};
 use zcash_protocol::consensus::NetworkType;

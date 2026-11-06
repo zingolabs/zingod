@@ -1,4 +1,4 @@
-//! zebra-network's types ↔ Zaino's, at the wire boundary
+//! zebra-network's types ↔ Zingod's, at the wire boundary
 //!
 //! - every id handed out = recomputed by zebra from the bytes it parsed (a peer's claim never
 //!   passes through)
@@ -128,7 +128,7 @@ mod tests {
     }
 
     proptest! {
-        /// Either shape of id survives Zaino → zebra → Zaino unchanged (no byte order flipped)
+        /// Either shape of id survives Zingod → zebra → Zingod unchanged (no byte order flipped)
         #[test]
         fn a_peer_tx_id_round_trips_through_zebras(
             txid in any::<[u8; 32]>(),

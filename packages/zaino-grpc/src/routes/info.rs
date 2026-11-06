@@ -1,7 +1,7 @@
 //! Server-info methods: `GetLightdInfo`, `GetStandardFee`, both from the `GrpcSnapshot`'s tips +
 //! schedule, no validator read
 //!
-//! - `block_height` = what Zaino serves, not the validator's tip (a wallet gates its sync on it)
+//! - `block_height` = what Zingod serves, not the validator's tip (a wallet gates its sync on it)
 //! - `estimated_height` = verified best tip, no validator call ("how far behind")
 
 use http::Response;

@@ -1,4 +1,4 @@
-//! Zaino's JSON-RPC client against a simulated zebrad: request params, envelopes, batches,
+//! Zingod's JSON-RPC client against a simulated zebrad: request params, envelopes, batches,
 //! parsers and error classification, all on the real bytes
 
 use zaino_primitives::types::TransactionLocation;

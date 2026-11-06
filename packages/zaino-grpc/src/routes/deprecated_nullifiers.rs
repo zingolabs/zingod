@@ -3,7 +3,7 @@
 // =================================================================================================
 // !!! TODO: REMOVE THIS MODULE (deprecated `GetBlockRangeNullifiers`)
 // !!! - Served only for pepper-sync (still calls it)
-// !!! - not part of Zaino's supported surface
+// !!! - not part of Zingod's supported surface
 // !!! - Delete with its `Method` variant + arms and its proto rpc once pepper-sync
 // !!!   requests `GetBlockRange` with `poolTypes`
 // =================================================================================================

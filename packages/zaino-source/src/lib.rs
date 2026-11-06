@@ -1,4 +1,4 @@
-//! Zaino's validator source: the questions Zaino asks a validator
+//! Zingod's validator source: the questions Zingod asks a validator
 //!
 //! - [`ChainDataSource`]: one port, each question with its own domain error, transport-agnostic
 //! - [`ZcashLegacyRpcClient`]: every question over JSON-RPC (zebrad or zcashd)

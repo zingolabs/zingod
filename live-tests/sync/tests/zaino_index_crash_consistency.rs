@@ -1,4 +1,4 @@
-//! Crash consistency: zaino SIGKILLed mid-build, three times, over a frozen mainnet chain
+//! Crash consistency: zingod SIGKILLed mid-build, three times, over a frozen mainnet chain
 //!
 //! - Durable = fsynced before published → a kill may lose the non-finalized state, never a
 //!   durable height
@@ -6,7 +6,7 @@
 //!   (`zainod verify`) and the served answers must stay zebra's (every 5 s + at rest)
 //! - Frozen chain (peerless zebra at `ORCHARD_MAINNET`) → at rest the durable extent is exact:
 //!   `pin - FINALISED_DEPTH` (bulk→tip transition writes its partial batch)
-//! - Restarts beyond the scheduled kills = zaino crashed on its own
+//! - Restarts beyond the scheduled kills = zingod crashed on its own
 //!
 //! `ztest sync start zaino_index_crash_consistency`
 
@@ -26,7 +26,7 @@ use ztest::{sync_ensure, sync_fail};
 // ── topology ──────────────────────────────────────────────────────────────────────────────────
 
 const ZAINO: &str = "zaino";
-/// Set on zaino, not mirrored from its default
+/// Set on zingod, not mirrored from its default
 const FINALISED_DEPTH: u32 = 1_000;
 /// UNMEASURED: index files for 1.69M blocks
 const INDEX_DISK_GIB: u64 = 64;
@@ -211,7 +211,7 @@ async fn zaino_index_crash_consistency(run: SyncRunner) -> SyncOutcome {
         sync_ensure!(durable == want, "durable extents\n  got:  {durable:?}\n  want: {want:?}");
         Ok(())
     });
-    // Chain from zaino's config, height = its own served tip; activation + branch from zebra
+    // Chain from zingod's config, height = its own served tip; activation + branch from zebra
     index.at_completion("lightd_info_is_zebras", Fatal).check(async move |_, (zebra, zaino)| {
         let info = zaino.indexer_info().await?;
         let truth = zebra.json_rpc().await?.call_value("getblockchaininfo", json!([])).await?;

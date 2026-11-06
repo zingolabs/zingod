@@ -1,4 +1,4 @@
-//! Command-line interface for Zaino.
+//! Command-line interface for Zingod.
 
 use std::path::PathBuf;
 
@@ -22,7 +22,7 @@ pub(super) struct Cli {
 
 #[derive(Subcommand, Debug, Clone)]
 pub(super) enum Command {
-    /// Start the Zaino indexer service.
+    /// Start the Zingod indexer service.
     Start,
     /// Generate a configuration file with default values.
     GenerateConfig {

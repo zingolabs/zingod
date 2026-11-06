@@ -1,4 +1,4 @@
-//! Consensus rules a transaction's own bytes, the next block and Zaino's UTXO set decide
+//! Consensus rules a transaction's own bytes, the next block and Zingod's UTXO set decide
 //! (`docs/architecture.md` §5): a submission's precheck, and a peer quorum's admission
 //!
 //! - consensus only: fee floors = node policy (carried by the peer quorum, never second-guessed)

@@ -22,7 +22,7 @@ const FUND: Pool = Pool::Orchard;
 const SEAM_ADVANCE: u32 = ztest::backends::zainod::REGTEST_FINALISED_DEPTH + 5;
 /// Finalized writer's commit lag behind the validator (per batch: frontier moves in steps)
 const SEAM_TIMEOUT: Duration = Duration::from_secs(300);
-/// zaino's mempool mirror poll period
+/// zingod's mempool mirror poll period
 const MEMPOOL_POLL: Duration = Duration::from_millis(500);
 /// Send returned → mirrored ceiling (20 mirror polls: a stalled mirror fails here, not at `READY`)
 const MIRRORED_WITHIN: Duration = Duration::from_secs(10);
@@ -41,7 +41,7 @@ fn sent_txid(sent: Result<Vec<TxId>, RpcError>, to: &str) -> Result<TxId> {
     txids.into_iter().next().with_context(|| format!("send to {to} returned no txid"))
 }
 
-/// Polls until zaino's mempool = zebrad's `getrawmempool` and holds every `sent` txid →
+/// Polls until zingod's mempool = zebrad's `getrawmempool` and holds every `sent` txid →
 /// the agreed txids, sorted
 ///
 /// - `sent` = non-vacuity premise (never-relayed sends leave both sides empty and equal)

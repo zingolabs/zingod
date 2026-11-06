@@ -1,4 +1,4 @@
-//! Zaino's engine: sequences as positional files, maps as LSM segment sets, one manifest
+//! Zingod's engine: sequences as positional files, maps as LSM segment sets, one manifest
 //!
 //! ```text
 //! <dir>/

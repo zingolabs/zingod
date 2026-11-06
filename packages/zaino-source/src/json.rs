@@ -1,6 +1,6 @@
 //! JSON-RPC `result` → zaino-primitives types, one serde reply shape per method
 //!
-//! - Only fields Zaino reads are declared: an unread field never fails a poll
+//! - Only fields Zingod reads are declared: an unread field never fails a poll
 //! - Absent / `null` optional field = `None`
 //! - Present but malformed = error ("inactive" != "garbled")
 

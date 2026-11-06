@@ -1,4 +1,4 @@
-//! zebra-network embedded as Zaino's p2p layer (`docs/architecture.md` §3)
+//! zebra-network embedded as Zingod's p2p layer (`docs/architecture.md` §3)
 //!
 //! ```text
 //!   requests ──▶ peer set (zebra's p2c over ready peers) ──▶ FindHeaders · BlocksByHash
@@ -6,7 +6,7 @@
 //!   mempool_of(peer) ──▶ that peer alone ──▶ its whole mempool listing
 //!   push(raw) ──▶ PushTransaction ──▶ ⌈ready/3⌉ random ready peers (zebra's relay)
 //!   peers ──▶ inbound service ──▶ AdvertiseBlock(hash, peer) ──▶ announcements (broadcast)
-//!                                  everything else ──▶ Nil (Zaino serves no peer)
+//!                                  everything else ──▶ Nil (Zingod serves no peer)
 //! ```
 //!
 //! - every id or hash handed out = zebra's own from the bytes
@@ -111,7 +111,7 @@ impl PeerNetwork {
     ///
     /// - crawling continues in the background
     /// - multi-thread runtime required (zebra's codec parses in `block_in_place`)
-    /// - listener on loopback (zebra always opens one, Zaino serves no peer)
+    /// - listener on loopback (zebra always opens one, Zingod serves no peer)
     pub async fn start(config: PeerConfig) -> Self {
         let network = match config.network {
             NetworkType::Main => Network::Mainnet,
@@ -131,8 +131,8 @@ impl PeerNetwork {
         }
         let (announced, _) = broadcast::channel(ANNOUNCED_BUFFER);
         let user_agent = format!("/Zaino:{}/", env!("CARGO_PKG_VERSION"));
-        // - no services: Zaino serves no peer (claiming NODE_NETWORK draws block requests it drops)
-        // - block advertiser dropped: Zaino announces no blocks
+        // - no services: Zingod serves no peer (claiming NODE_NETWORK draws block requests it drops)
+        // - block advertiser dropped: Zingod announces no blocks
         let (peers, address_book, misbehaved, _) = zebra_network::init(
             zebra,
             inbound(announced.clone()),

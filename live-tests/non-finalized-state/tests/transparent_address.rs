@@ -94,7 +94,7 @@ async fn address_index_moves_orphaned_coinbase_to_the_winning_miner() -> Result<
             let id = entry.as_str().unwrap_or_default().to_owned();
             zebrad_txs.push((raw, id, tx["height"].as_u64().unwrap_or(u64::MAX)));
         }
-        // zaino's bytes → zebrad's txid for the same bytes, else the byte length
+        // zingod's bytes → zebrad's txid for the same bytes, else the byte length
         let mut served: Vec<(String, u64)> = indexer
             .get_taddress_txids(address.to_owned(), 1u32.into(), tip.into())
             .await?

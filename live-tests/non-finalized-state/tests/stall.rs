@@ -16,7 +16,7 @@ const SCRAPE: Duration = Duration::from_secs(10);
 const DEPTH: u32 = 10;
 const CHAIN: u32 = 3 * DEPTH;
 const ORPHANED: u32 = 4;
-/// Past the window from zaino's frozen tip (`CHAIN`)
+/// Past the window from zingod's frozen tip (`CHAIN`)
 const REPLACEMENT: u32 = ORPHANED + DEPTH + 3;
 
 #[ztest::qos::integration]

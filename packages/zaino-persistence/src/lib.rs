@@ -1,4 +1,4 @@
-//! What every Zaino index stores through: persistence port (`port.rs`) + its engine,
+//! What every Zingod index stores through: persistence port (`port.rs`) + its engine,
 //! [`DiskEngine`] (guide: `usage.md`)
 
 // only `unsafe` (no safe rustix API): `fs::real` (mmap, sync_file_range, mincore), `fs::probe`

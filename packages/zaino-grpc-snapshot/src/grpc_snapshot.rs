@@ -1,4 +1,4 @@
-//! [`GrpcSnapshot`]: every answer Zaino serves, from one value (`usage.md`)
+//! [`GrpcSnapshot`]: every answer Zingod serves, from one value (`usage.md`)
 
 use std::{sync::Arc, time::Duration};
 

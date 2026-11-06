@@ -1,4 +1,4 @@
-//! [`ChainDataSource`]: every question Zaino asks a trusted validator's RPC, one port
+//! [`ChainDataSource`]: every question Zingod asks a trusted validator's RPC, one port
 //!
 //! - `Err(QueryError::Domain(_))` = the validator's answer (never worth asking again)
 //! - `Err(QueryError::Unsupported)` = it has no such method (an older node: ask another)
@@ -14,7 +14,7 @@ use zcash_protocol::{BlockHash, TxId};
 
 use crate::{BlockchainInfo, NodeRelease, NonDomainError, PeerInfo, QueryError};
 
-/// Trusted validator's RPC, as every Zaino consumer asks it
+/// Trusted validator's RPC, as every Zingod consumer asks it
 ///
 /// - production = `ZcashLegacyRpcClient` or `ZebraIndexerGrpcClient` (`zainod`'s
 ///   `validator_client`)

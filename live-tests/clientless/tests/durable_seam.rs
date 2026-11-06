@@ -1,4 +1,4 @@
-//! Reads that cross zaino's durable index / NFS boundary
+//! Reads that cross zingod's durable index / NFS boundary
 //!
 //! - Below `tip + 1 − finalised_depth` → durable index, above → non-finalized state
 //! - Spanning range = stitched from both (only place a served chain can gain a gap, a duplicate,
@@ -93,7 +93,7 @@ async fn reads_across_the_seam_serve_the_validators_chain() -> Result<()> {
         );
     }
 
-    // Validator = oracle for the durable half too (else only ever compared against zaino)
+    // Validator = oracle for the durable half too (else only ever compared against zingod)
     let vrpc = validator.json_rpc().await?;
     let all_pools = vec![1, 2, 3, 4];
     let (low, high) = (BlockHeight::from(floor - 3), BlockHeight::from(floor + 3));
