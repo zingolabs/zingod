@@ -6,7 +6,7 @@ nothing about the transport. Each method, its JSON-RPC call and its answer: the
 `ChainDataSource` rustdoc (`chain_data_source.rs`). Blocks come back decoded once, from consensus
 bytes, into `zingod_primitives::types::Block`.
 
-Two implementations: `ZcashLegacyRpcClient` (JSON-RPC, zebrad or zcashd), and
+Two implementations: `ZcashLegacyRpcClient` (JSON-RPC: zebrad, zakurad or zcashd), and
 `ZebraIndexerGrpcClient`, which fetches blocks over zebrad's indexer gRPC and asks everything
 else of its inner legacy client. Tests drive the real legacy client against
 [`MockValidator`](#testing-mockvalidator).

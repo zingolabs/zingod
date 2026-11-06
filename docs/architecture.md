@@ -240,8 +240,8 @@ unchecked: Ok at the first acceptance (trusted Ok | any trusted listing | peer q
 - `checkadmission` (Zingod's zebra fork) runs `sendrawtransaction`'s checks, the fee policy and
   mempool conflicts included, without admitting or relaying. It goes to a holder of the verified
   best only (a validator behind it refuses what spends a fresh output). A validator without it
-  (zcashd, stock zebrad) answers `-32601`: never a failure, the next holder is asked. A refusal's
-  wire shape: [rpc_api.md](./rpc_api.md#where-each-method-is-answered).
+  (zcashd, stock zebrad, zakurad) answers `-32601`: never a failure, the next holder is asked. A
+  refusal's wire shape: [rpc_api.md](./rpc_api.md#where-each-method-is-answered).
 - A peer relay gets no reply and zebra names no recipient. **Spread** = a trusted validator never
   pushed to lists it, or a peer quorum admits it (past the ~⅓ one relay reaches). The job ends at
   spread, when nothing outside its trusted entries can be watched, or when attempts run out.

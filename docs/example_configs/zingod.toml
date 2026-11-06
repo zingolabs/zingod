@@ -8,7 +8,8 @@
 network = "testnet"
 
 # How zingod talks to every [[trusted_validators]] entry (default legacy_rpc)
-# - legacy_rpc = JSON-RPC for everything (zebrad or zcashd); blocks arrive as hex inside JSON
+# - legacy_rpc = JSON-RPC for everything (zebrad, zakurad or zcashd); blocks arrive as hex inside
+#   JSON
 # - grpc = blocks over zebrad's indexer gRPC (GetBlock, GetBlockRange) as stored bytes, no hex
 #   or JSON; everything else over JSON-RPC. Needs each validator's indexer_address and a zebrad
 #   serving GetBlockRange: Zingod's zebra fork only (elicbarbieri/zebra perf/indexer-block-range)
@@ -18,7 +19,8 @@ network = "testnet"
 # [metrics]
 # listen_address = "127.0.0.1:9999"
 
-# Validators Zingod trusts (Zebra JSON-RPC), at least one; no vote (`priority` orders who is asked)
+# Validators Zingod trusts (Zebra or Zakura JSON-RPC), at least one; no vote (`priority` orders who
+# is asked)
 # - tip = their most-work header (trusted: zebra validated it), served while any of them holds it
 # - one listing admits a mempool transaction; submission: see [submission]
 # - 2+ = survives one going down (no vote: more never weakens it)
