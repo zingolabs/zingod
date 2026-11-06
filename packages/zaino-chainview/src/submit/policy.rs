@@ -17,7 +17,7 @@ use zaino_traffic::TrustedValidatorId;
 use crate::chain_view_snapshot::MempoolState;
 use crate::trusted_validators::TrustedValidatorSet;
 
-/// How hard Zaino pushes one transaction into the network (zainod's `[submission]`)
+/// How hard Zingod pushes one transaction into the network (zainod's `[submission]`)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct SubmitPolicy {

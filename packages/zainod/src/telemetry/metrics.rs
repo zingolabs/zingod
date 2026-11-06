@@ -90,7 +90,7 @@ pub(crate) fn recorder() -> (ZebraNetworkSummary<PrometheusRecorder>, Prometheus
 /// - every other zebra-network series = noop handle (per-peer debug, no fleet signal)
 pub(crate) struct ZebraNetworkSummary<R>(R);
 
-/// zebra-network's metric namespaces (zaino's own = `zaino.` / `process_`)
+/// zebra-network's metric namespaces (zingod's own = `zaino.` / `process_`)
 const ZEBRA_NETWORK: [&str; 6] =
     ["zcash.net.", "zebra.net.", "candidate_set.", "crawler.", "peer.", "pool."];
 
@@ -231,7 +231,7 @@ mod tests {
     /// zebra-network's emissions (its own label shapes) through zainod's recorder:
     ///
     /// - kept series keep every other label, peers summed (2 addresses → one total per command)
-    /// - every other zebra-network series gone, zaino's own labels untouched
+    /// - every other zebra-network series gone, zingod's own labels untouched
     /// - no peer address or user agent anywhere in the scrape
     #[test]
     fn zebra_network_keeps_its_summary_series_without_peer_identity() {

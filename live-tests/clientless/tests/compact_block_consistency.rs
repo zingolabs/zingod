@@ -106,7 +106,7 @@ async fn unfiltered_compact_blocks_match_chain_metadata() -> Result<()> {
 
 /// One orchard-receiver miner: Orchard coinbases from NU5, Ironwood from NU6.3 (`None` = never)
 ///
-/// - Mis-timed flip fails on both sides: zebrad's raw coinbase and zaino's served actions
+/// - Mis-timed flip fails on both sides: zebrad's raw coinbase and zingod's served actions
 #[rstest]
 #[case::orchard_only(None)]
 #[case::ironwood_only(Some(2))]
@@ -138,7 +138,7 @@ async fn coinbase_pool_follows_nu6_3_activation(#[case] nu6_3: Option<u32>) -> R
     let blocks = indexer.get_block_range(BlockHeight::from(1u32), tip).await?;
     assert_eq!(blocks.len() as u64, u64::from(tip), "every height in [1, {tip}]");
 
-    // - Raw-block predicate = zebrad's routing; raw-vs-served = zaino's (both collected per run)
+    // - Raw-block predicate = zebrad's routing; raw-vs-served = zingod's (both collected per run)
     // - <https://github.com/zingolabs/zaino/issues/1368>
     let vrpc = validator.json_rpc().await?;
     let mut violations: Vec<String> = Vec::new();

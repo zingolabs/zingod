@@ -1,4 +1,4 @@
-//! Vocabulary every Zaino crate shares (crates depend on this, never on each other)
+//! Vocabulary every Zingod crate shares (crates depend on this, never on each other)
 //!
 //! - `types`: chain domain types (blocks, hashes, trees) + peer grouping; `protocol`: spec rules
 //! - `display` (`ByteSize`, `Human`), `metric`, `serde_secs`, [`sha256d`]

@@ -2,7 +2,7 @@
 //!
 //! - Faucet spends a shielded note → a transparent recipient: nullifier, tx lookup and address rows
 //!   move with the reorg, address rows checked against zebrad's own address RPCs at every step
-//! - zebrad never re-admits an orphaned tx (rebroadcast = the wallet's job, done via zaino)
+//! - zebrad never re-admits an orphaned tx (rebroadcast = the wallet's job, done via zingod)
 //! - C15, C11 via `remined_at_the_same_height` (`README.md`)
 
 use std::time::Duration;
@@ -16,7 +16,7 @@ const READY: Duration = Duration::from_secs(180);
 const CONVERGE: Duration = Duration::from_secs(180);
 const DEPTH: u32 = 10;
 const SEND: u64 = 250_000;
-/// zaino's mempool mirror poll period
+/// zingod's mempool mirror poll period
 const MEMPOOL_POLL: Duration = Duration::from_millis(500);
 const ALL_POOLS: [i32; 4] = [1, 2, 3, 4];
 
@@ -48,7 +48,7 @@ async fn orphaned_transaction_leaves_every_index_and_returns_where_remined(
     indexer.wait_for_tip(validator.tip().await?, CONVERGE).await?;
     let vrpc = validator.json_rpc().await?;
 
-    // zaino's rows for `taddr` == zebrad's → (balance, UTXO heights, (txid, height) per tx)
+    // zingod's rows for `taddr` == zebrad's → (balance, UTXO heights, (txid, height) per tx)
     type AddressRows = (i64, Vec<u64>, Vec<(String, u64)>);
     let address_rows = async |tip: u32| -> Result<AddressRows> {
         let who = json!([{ "addresses": [&taddr] }]);
@@ -105,7 +105,7 @@ async fn orphaned_transaction_leaves_every_index_and_returns_where_remined(
             let id = entry.as_str().unwrap_or_default().to_owned();
             zebrad_txs.push((raw, id, tx["height"].as_u64().unwrap_or(u64::MAX)));
         }
-        // zaino's bytes → zebrad's txid for the same bytes, else the byte length
+        // zingod's bytes → zebrad's txid for the same bytes, else the byte length
         let mut txids: Vec<(String, u64)> = indexer
             .get_taddress_txids(taddr.clone(), 1u32.into(), tip.into())
             .await?

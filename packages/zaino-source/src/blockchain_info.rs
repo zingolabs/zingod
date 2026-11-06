@@ -4,7 +4,7 @@ use zaino_primitives::types::BlockRef;
 use zcash_protocol::consensus::{BlockHeight, BranchId, NetworkUpgrade, UPGRADES_IN_ORDER};
 use zcash_protocol::local_consensus::LocalNetwork;
 
-/// `getblockchaininfo` as Zaino reads it
+/// `getblockchaininfo` as Zingod reads it
 ///
 /// - `activations` = upgrades this build knows (an unknown branch id skipped, never an error)
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -14,7 +14,7 @@ pub struct BlockchainInfo {
     pub activations: Vec<(BranchId, BlockHeight)>,
 }
 
-/// Why a listed schedule is no schedule Zaino can serve
+/// Why a listed schedule is no schedule Zingod can serve
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ScheduleError {
     #[error("upgrades listed out of protocol order: {listed:?}")]
@@ -26,7 +26,7 @@ pub enum ScheduleError {
 impl BlockchainInfo {
     /// Listed heights as a schedule (unlisted = never)
     ///
-    /// - Sapling required: every schedule Zaino serves activates it (`pool_activations`)
+    /// - Sapling required: every schedule Zingod serves activates it (`pool_activations`)
     pub fn schedule(&self) -> Result<LocalNetwork, ScheduleError> {
         let listed = |upgrade: NetworkUpgrade| {
             let entry = self.activations.iter().find(|(id, _)| *id == upgrade.branch_id());

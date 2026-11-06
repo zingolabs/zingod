@@ -66,7 +66,7 @@ pub(crate) fn decode_chain_metadata(metadata: &compact_formats::ChainMetadata) -
 /// `tx` → `CompactTx`
 ///
 /// - `index` = position in block (mempool: stream slot)
-/// - `fee` = `None` (coinbase, unpriced mempool tx) or >= 2^32 → 0 (zaino policy: `uint32`
+/// - `fee` = `None` (coinbase, unpriced mempool tx) or >= 2^32 → 0 (zingod policy: `uint32`
 ///   "present if the server can provide it", no presence bit)
 pub fn compact_tx(
     index: u64,

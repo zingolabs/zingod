@@ -543,7 +543,7 @@ mod tests {
             ..proptest::prelude::ProptestConfig::with_cases(64)
         })]
 
-        /// librustzcash-written txs of every format Zaino serves (Sapling v4, NU5 v5, NU6.3 v5 +
+        /// librustzcash-written txs of every format Zingod serves (Sapling v4, NU5 v5, NU6.3 v5 +
         /// v6 with Ironwood) decode to their source
         #[test]
         fn transactions_decode_to_their_source(tx in arb_any_served_format()) {

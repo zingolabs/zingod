@@ -1,4 +1,4 @@
-//! Smoke over zaino's block, tree-state and info gRPC reads against a regtest zebrad
+//! Smoke over zingod's block, tree-state and info gRPC reads against a regtest zebrad
 //!
 //! - Transparent miner → every coinbase carries a vout (pool filters observable on the wire)
 

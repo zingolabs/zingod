@@ -35,7 +35,7 @@ pub struct ValidatedTransaction {
 }
 
 /// Decoded, prechecked against the block above best, then one holder's `checkadmission`
-/// (nothing relayed: a refusal never leaves Zaino)
+/// (nothing relayed: a refusal never leaves Zingod)
 pub(crate) async fn validate<S: ChainDataSource>(
     core: &ChainViewCore,
     balancer: &TrafficBalancer<S>,

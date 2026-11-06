@@ -1,7 +1,7 @@
 //! [`MockValidator`]: one simulated zebrad over a [`MockChain`]'s blocks, answering zebrad's
 //! JSON-RPC as bytes
 //!
-//! - tests reach it through Zaino's own client ([`MockValidator::client`])
+//! - tests reach it through Zingod's own client ([`MockValidator::client`])
 //! - best chain only, by height and hash (nothing above its tip)
 //! - upgrades from the chain's schedule
 //! - N nodes over one `MockChain` = N validators (`chain.validator(tip)`), each `follow`ing its tip
@@ -345,7 +345,7 @@ impl MockValidator {
         Self { node: Arc::new(Mutex::new(node)) }
     }
 
-    /// Zaino's own JSON-RPC client, its requests answered by this node in-process
+    /// Zingod's own JSON-RPC client, its requests answered by this node in-process
     pub fn client(&self) -> ZcashLegacyRpcClient {
         let node = Arc::clone(&self.node);
         let served: Served = Arc::new(move |request| serve(Arc::clone(&node), request).boxed());

@@ -1,4 +1,4 @@
-//! Driver over `MockValidator` members (Zaino's JSON-RPC client to each), paused clock
+//! Driver over `MockValidator` members (Zingod's JSON-RPC client to each), paused clock
 //! (`usage.md`)
 
 use std::sync::Arc;

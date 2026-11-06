@@ -35,7 +35,7 @@ const TRUSTED_MAINNET_P2P: [&str; 2] =
 const CHAIN_DISK_GIB: u64 = 320;
 /// UNMEASURED: compact-block + tree-state + transparent files for the whole chain
 const INDEX_DISK_GIB: u64 = 160;
-/// Set on zaino, not mirrored from its default
+/// Set on zingod, not mirrored from its default
 const FINALISED_DEPTH: u32 = 1_000;
 /// Ordered stream → throughput = blocks in flight / tail latency
 /// - below the header window: 8 per `GetBlockRange` → 32 streams
@@ -46,7 +46,7 @@ const MERGE_MIB_PER_SEC: NonZeroU32 = NonZeroU32::new(300).expect("non-zero");
 /// - gRPC: ceil(72 / 20) = 4 HTTP/2 connections (zebrad admits 20 streams per connection)
 /// - ≤ 100: zebra's jsonrpsee server refuses connection 101+ with HTTP 429 (JSON-RPC: the rest)
 const VALIDATOR_CONNECTIONS: NonZeroU32 = NonZeroU32::new(72).expect("non-zero");
-/// zebrad's catch-up past the pin: 4 verify threads of its 6 cores (rest = zaino's block reads +
+/// zebrad's catch-up past the pin: 4 verify threads of its 6 cores (rest = zingod's block reads +
 /// RocksDB); verify + download depth = zebra's defaults
 const ZEBRA_SYNC_BUDGET: SyncBudget = SyncBudget {
     verify_threads: NonZeroU32::new(4),
@@ -68,7 +68,7 @@ const STALL_WINDOW: Duration = mins(15);
 const PEERING_WINDOW: Duration = mins(10);
 /// Peers but still on the pin = handshakes that never turn into block download
 const SNAPSHOT_EXIT_WINDOW: Duration = mins(30);
-/// zaino trails a moving zebra by one poll batch
+/// zingod trails a moving zebra by one poll batch
 const TERMINAL_WINDOW: Duration = mins(30);
 /// Zebrad may still be closing the pin → tip gap at completion
 const NETWORK_CATCHUP_WINDOW: Duration = hours(3);
@@ -249,7 +249,7 @@ async fn zaino_index_construction(run: SyncRunner) -> SyncOutcome {
             Ok(())
         },
     );
-    // zaino's target = zebra's tip → without this, "zaino at the tip" = "wherever zebra stalled"
+    // zingod's target = zebra's tip → without this, "zingod at the tip" = "wherever zebra stalled"
     index.at_completion("validator_at_network_tip", Fatal).within(NETWORK_CATCHUP_WINDOW).check(
         async |_, (zebra, _)| {
             let client = zebra.json_rpc().await?;
@@ -285,7 +285,7 @@ async fn zaino_index_construction(run: SyncRunner) -> SyncOutcome {
             Ok(())
         },
     );
-    // Height = zaino's own served tip (bracketed: the live tip moves); chain from zaino's config;
+    // Height = zingod's own served tip (bracketed: the live tip moves); chain from zingod's config;
     // activation + branch from zebra
     index.at_completion("lightd_info_is_zebras", Fatal).check(async |_, (zebra, zaino)| {
         let before = u64::from(u32::from(zaino.latest_block_height().await?));

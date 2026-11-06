@@ -1,4 +1,4 @@
-//! Domain types shared across the Zaino stack: chain vocabulary + peer grouping ([`Netgroup`])
+//! Domain types shared across the Zingod stack: chain vocabulary + peer grouping ([`Netgroup`])
 
 mod announced;
 mod block;

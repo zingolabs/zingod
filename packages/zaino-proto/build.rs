@@ -75,7 +75,7 @@ fn main() -> io::Result<()> {
         )
         .compile_protos(&[SERVICE_PROTO], &["proto/"])?;
 
-    // zebrad's push streams + block fetch: Zaino = client, server half = tests' fake zebrad
+    // zebrad's push streams + block fetch: Zingod = client, server half = tests' fake zebrad
     // - `Bytes`: a block's payload = a slice of the received frame, never copied out of it
     configure()
         .out_dir(module_dir("zebra_indexer")?)

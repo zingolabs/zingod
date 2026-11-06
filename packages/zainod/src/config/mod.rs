@@ -73,7 +73,7 @@ const GENERATED_CONFIG_HEADER: &str = r#"# Zaino daemon configuration
 # For documentation see https://github.com/zingolabs/zaino
 "#;
 
-/// `[[trusted_validators]]` entry: Zebra JSON-RPC endpoint Zaino trusts (headers for the verified
+/// `[[trusted_validators]]` entry: Zebra JSON-RPC endpoint Zingod trusts (headers for the verified
 /// chain, mempool admission with fees, mined-transaction lookups)
 ///
 /// - No vote (`priority` = who is asked first)
@@ -436,7 +436,7 @@ impl SyncConfig {
     }
 }
 
-/// `[p2p]`: Zaino's own p2p peers: headers + blocks (checked, never vouched), finality on their
+/// `[p2p]`: Zingod's own p2p peers: headers + blocks (checked, never vouched), finality on their
 /// word (> 5 netgroups, no difficulty collapse), the mempool quorum (each peer's listing polled),
 /// submission relays
 ///

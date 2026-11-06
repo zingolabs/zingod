@@ -1,4 +1,4 @@
-//! Zaino's peer set against a scripted zebra-network peer on loopback (real handshakes, real
+//! Zingod's peer set against a scripted zebra-network peer on loopback (real handshakes, real
 //! codec): no DNS, no internet
 //!
 //! - multi_thread on every test: zebra-network's codec parses blocks and txs in `block_in_place`
@@ -63,7 +63,7 @@ where
     (listen_addr, peers, book, advertiser)
 }
 
-/// Zaino's peer set seeded with `fake` alone, back once `fake` is live (handshaken)
+/// Zingod's peer set seeded with `fake` alone, back once `fake` is live (handshaken)
 async fn zaino_peered_with(fake: SocketAddr) -> PeerNetwork {
     let mut config = PeerConfig::new(NetworkType::Regtest);
     config.initial_peers = vec![fake.to_string()];

@@ -1,6 +1,6 @@
 //! Size-tiered LSM over immutable sorted segments: the map tables of [`DiskEngine`]
 //!
-//! - Stripped to what Zaino's indexes use: **nothing updated** (every row derives from one block)
+//! - Stripped to what Zingod's indexes use: **nothing updated** (every row derives from one block)
 //!   → no memtable, no WAL, no versions
 //! - `deletes()` map: insert-once / remove-once → a tombstone row, cancelled with its value in any
 //!   merge

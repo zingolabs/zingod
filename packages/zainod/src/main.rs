@@ -1,4 +1,4 @@
-//! Zaino indexer daemon
+//! Zingod indexer daemon
 
 #![forbid(unsafe_code)]
 
