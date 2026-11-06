@@ -195,5 +195,5 @@ path = "<ZINGOD_DATA>/txid_location"
 
 # Fill empty indexes from a published snapshot before boot (aria2c on PATH)
 # [snapshot]
-# manifest = "https://snapshots.zingolabs.dev/zingod-snapshot-1.1.0/manifest.json"
+# manifest = "https://snapshots.zingolabs.dev/mainnet/manifest.json"
 # connections = 8   # total across every archive

@@ -94,7 +94,7 @@ indexes from a published index snapshot before it boots:
 
 ```toml
 [snapshot]
-manifest = "https://snapshots.zingolabs.dev/zingod-snapshot-1.1.0/manifest.json"
+manifest = "https://snapshots.zingolabs.dev/mainnet/manifest.json"
 connections = 8   # total across every archive, at most 16
 ```
 

@@ -504,8 +504,8 @@ mod tests {
     #[test]
     fn a_v2_manifest_yields_one_fetch_per_empty_index() {
         let indexes = PathBuf::from("/srv/zingod/indexes");
-        let base = Url::parse("https://snapshots.example/zingod-snapshot-1.1.0/manifest.json")
-            .expect("manifest url");
+        let base =
+            Url::parse("https://snapshots.example/mainnet/manifest.json").expect("manifest url");
         let manifest: Manifest = serde_json::from_value(json!({
             "network": "mainnet", "height": 7,
             "indexes": {
@@ -528,7 +528,7 @@ mod tests {
         let expected = [
             (
                 IndexKind::CompactBlock,
-                "https://snapshots.example/zingod-snapshot-1.1.0/compact_block.tar.zst",
+                "https://snapshots.example/mainnet/compact_block.tar.zst",
                 indexes.join(".compact_block.snapshot"),
             ),
             (
