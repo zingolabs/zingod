@@ -38,7 +38,7 @@ async fn orchard_note_spends_to_ironwood_across_boundary() -> Result<()> {
         .build();
     let mut env = TestEnv::builder().ready_timeout(READY).activation_heights(nu6_3_at_boundary);
     let validator = env.add_validator(Validator::zebrad("6.2.3").regtest().mine_to(Pool::Orchard));
-    let indexer = env.add_indexer(dev!(Indexer::Zainod, "../../Dockerfile").regtest());
+    let indexer = env.add_indexer(dev!(Indexer::Zingod, "../../Dockerfile").regtest());
     let wallet = env.add_wallet(Wallet::librustzcash());
     env.build().await?;
 
@@ -141,7 +141,7 @@ async fn receipts_flip_pools_exactly_at_the_boundary() -> Result<()> {
         .build();
     let mut env = TestEnv::builder().ready_timeout(READY).activation_heights(nu6_3_at_boundary);
     let validator = env.add_validator(Validator::zebrad("6.2.3").regtest().mine_to(Pool::Orchard));
-    let indexer = env.add_indexer(dev!(Indexer::Zainod, "../../Dockerfile").regtest());
+    let indexer = env.add_indexer(dev!(Indexer::Zingod, "../../Dockerfile").regtest());
     let wallet = env.add_wallet(Wallet::librustzcash());
     env.build().await?;
 
@@ -245,7 +245,7 @@ async fn shield_deposits_to_orchard_before_boundary() -> Result<()> {
         .build();
     let mut env = TestEnv::builder().ready_timeout(READY).activation_heights(nu6_3_at_boundary);
     let validator = env.add_validator(Validator::zebrad("6.2.3").regtest().mine_to(Pool::Orchard));
-    let indexer = env.add_indexer(dev!(Indexer::Zainod, "../../Dockerfile").regtest());
+    let indexer = env.add_indexer(dev!(Indexer::Zingod, "../../Dockerfile").regtest());
     let wallet = env.add_wallet(Wallet::librustzcash());
     env.build().await?;
 

@@ -23,7 +23,7 @@ async fn reorg_storm_during_catch_up_converges_on_the_validators_chain() -> Resu
     let mut env = TestEnv::builder().ready_timeout(READY);
     let validator = env.add_validator(Validator::zebrad("6.2.3").regtest().mine_to(Pool::Orchard));
     let indexer =
-        env.add_indexer(dev!(Indexer::Zainod, "../../Dockerfile").regtest().finalised_depth(DEPTH));
+        env.add_indexer(dev!(Indexer::Zingod, "../../Dockerfile").regtest().finalised_depth(DEPTH));
     env.build().await?;
 
     let (warm, _) = validator.tip().await?;
@@ -80,7 +80,7 @@ async fn reorg_storm_during_catch_up_converges_on_the_validators_chain() -> Resu
             "[hash, sapling, orchard, ironwood] at {height}: zingod vs zebrad"
         );
     }
-    for index in ZainoIndex::ALL {
+    for index in ZingodIndex::ALL {
         assert_eq!(indexer.synced(index).await?, Some(true), "{index:?} serving after the storm");
     }
     let after = indexer.pod().await?.sample().await?;

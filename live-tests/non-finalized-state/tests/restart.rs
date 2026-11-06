@@ -10,7 +10,7 @@ use std::time::Duration;
 use anyhow::{ensure, Context, Result};
 use pretty_assertions::assert_eq;
 use serde_json::json;
-use ztest::backends::zainod::family;
+use ztest::backends::zingod::family;
 use ztest::prelude::*;
 
 const READY: Duration = Duration::from_secs(180);
@@ -32,7 +32,7 @@ async fn restart_after_a_reorg_serves_identically() -> Result<()> {
     let mut env = TestEnv::builder().ready_timeout(READY);
     let validator = env.add_validator(Validator::zebrad("6.2.3").regtest().mine_to(Pool::Orchard));
     let indexer = env.add_indexer(
-        dev!(Indexer::Zainod, "../../Dockerfile").regtest().finalised_depth(DEPTH).restartable(),
+        dev!(Indexer::Zingod, "../../Dockerfile").regtest().finalised_depth(DEPTH).restartable(),
     );
     env.build().await?;
 
@@ -49,7 +49,7 @@ async fn restart_after_a_reorg_serves_identically() -> Result<()> {
     for height in 1..=tip {
         lived_trees.push(indexer.get_tree_state(height.into()).await?);
     }
-    let lived_durable = indexer.finalized_height(ZainoIndex::CompactBlock).await?;
+    let lived_durable = indexer.finalized_height(ZingodIndex::CompactBlock).await?;
 
     let restart = indexer.kill_and_await_restart(RESTART).await?;
     indexer.wait_for_tip(reorg.tip, CONVERGE).await?;
@@ -70,7 +70,7 @@ async fn restart_after_a_reorg_serves_identically() -> Result<()> {
         assert_eq!(replayed, lived, "tree state {height}: replayed vs lived through the reorg");
     }
     assert_eq!(
-        indexer.finalized_height(ZainoIndex::CompactBlock).await?,
+        indexer.finalized_height(ZingodIndex::CompactBlock).await?,
         lived_durable,
         "compact-block durable height: after restart vs before",
     );
@@ -87,7 +87,7 @@ async fn reorg_while_down_is_followed_on_restart() -> Result<()> {
     let mut env = TestEnv::builder().ready_timeout(READY);
     let validator = env.add_validator(Validator::zebrad("6.2.3").regtest().mine_to(Pool::Orchard));
     let indexer = env.add_indexer(
-        dev!(Indexer::Zainod, "../../Dockerfile").regtest().finalised_depth(DEPTH).restartable(),
+        dev!(Indexer::Zingod, "../../Dockerfile").regtest().finalised_depth(DEPTH).restartable(),
     );
     env.build().await?;
 
@@ -138,14 +138,14 @@ async fn reorg_below_durable_while_down_halts_on_restart() -> Result<()> {
     let mut env = TestEnv::builder().ready_timeout(READY);
     let validator = env.add_validator(Validator::zebrad("6.2.3").regtest().mine_to(Pool::Orchard));
     let indexer = env.add_indexer(
-        dev!(Indexer::Zainod, "../../Dockerfile").regtest().finalised_depth(DEPTH).restartable(),
+        dev!(Indexer::Zingod, "../../Dockerfile").regtest().finalised_depth(DEPTH).restartable(),
     );
     env.build().await?;
 
     let (warm, _) = validator.tip().await?;
     validator.generate_blocks(CHAIN - u32::from(warm)).await?;
     indexer.wait_for_tip(validator.tip().await?, CONVERGE).await?;
-    let durable = indexer.finalized_height(ZainoIndex::CompactBlock).await?.unwrap_or(0);
+    let durable = indexer.finalized_height(ZingodIndex::CompactBlock).await?.unwrap_or(0);
 
     let pod = indexer.pod().await?;
     pod.freeze().await?;

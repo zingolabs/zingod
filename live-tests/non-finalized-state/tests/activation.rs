@@ -42,7 +42,7 @@ async fn reorg_across_nu6_3_activation_matches_the_validator(
     let mut env = TestEnv::builder().ready_timeout(READY).activation_heights(nu6_3_mid_chain);
     let validator = env.add_validator(Validator::zebrad("6.2.3").regtest().mine_to(Pool::Orchard));
     let indexer =
-        env.add_indexer(dev!(Indexer::Zainod, "../../Dockerfile").regtest().finalised_depth(DEPTH));
+        env.add_indexer(dev!(Indexer::Zingod, "../../Dockerfile").regtest().finalised_depth(DEPTH));
     env.build().await?;
 
     let (warm, _) = validator.tip().await?;

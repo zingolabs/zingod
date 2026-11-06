@@ -10,7 +10,7 @@ use anyhow::{Context, Result};
 use pretty_assertions::assert_eq;
 use rstest::rstest;
 use serde_json::json;
-use ztest::backends::zainod::family;
+use ztest::backends::zingod::family;
 use ztest::prelude::*;
 
 const READY: Duration = Duration::from_secs(180);
@@ -37,7 +37,7 @@ async fn every_index_serves_the_validators_chain_after_a_reorg(
     let mut env = TestEnv::builder().ready_timeout(READY);
     let validator = env.add_validator(Validator::zebrad("6.2.3").regtest().mine_to(Pool::Orchard));
     let indexer =
-        env.add_indexer(dev!(Indexer::Zainod, "../../Dockerfile").regtest().finalised_depth(DEPTH));
+        env.add_indexer(dev!(Indexer::Zingod, "../../Dockerfile").regtest().finalised_depth(DEPTH));
     env.build().await?;
 
     let (warm, _) = validator.tip().await?;
@@ -137,10 +137,10 @@ async fn every_index_serves_the_validators_chain_after_a_reorg(
     let scrape = indexer.read(SCRAPE).await?;
     assert_eq!(scrape.counter_total(family::REORGS), Some(1), "one rollback counted");
     assert_eq!(scrape.height(family::BEST_TIP), Some(tip), "zingod_best_tip");
-    for index in ZainoIndex::ALL {
+    for index in ZingodIndex::ALL {
         assert_eq!(indexer.synced(index).await?, Some(true), "{index:?} synced at the new tip");
     }
-    let durable = indexer.finalized_height(ZainoIndex::CompactBlock).await?;
+    let durable = indexer.finalized_height(ZingodIndex::CompactBlock).await?;
     let old_durable = u32::from(old_tip.0) - DEPTH;
     assert!(old_durable < fork, "pre-reorg durable {old_durable} below fork {fork} (in window)");
     let expected = Some(old_durable.max(tip - DEPTH));

@@ -21,7 +21,7 @@ mod chain_query_interface {
     async fn each_mined_block_is_served_promptly_and_ends_a_fresh_mempool_stream() -> Result<()> {
         let mut env = TestEnv::builder().ready_timeout(READY);
         let validator = env.add_validator(Validator::zebrad("6.2.3").regtest());
-        let indexer = env.add_indexer(dev!(Indexer::Zainod, "../../Dockerfile").regtest());
+        let indexer = env.add_indexer(dev!(Indexer::Zingod, "../../Dockerfile").regtest());
         env.build().await?;
 
         let tip = validator.generate_blocks(5).await?;

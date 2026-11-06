@@ -15,8 +15,7 @@ license = "Apache-2.0"
 version = "0.2.0"
 
 [workspace.dependencies]
-# TODO: back to a crates.io version once ztest releases the rewritten zingod backend
-ztest = { path = "../../ztest" }
+ztest = "0.2.0"
 tokio = { version = "1.38", features = ["full"] }
 anyhow = "1.0"
 serde_json = { version = "1.0", features = ["preserve_order"] }

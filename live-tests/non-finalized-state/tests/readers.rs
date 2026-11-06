@@ -32,7 +32,7 @@ async fn readers_see_one_branch_at_a_time_through_a_reorg() -> Result<()> {
     let mut env = TestEnv::builder().ready_timeout(READY);
     let validator = env.add_validator(Validator::zebrad("6.2.3").regtest().mine_to(Pool::Orchard));
     let indexer =
-        env.add_indexer(dev!(Indexer::Zainod, "../../Dockerfile").regtest().finalised_depth(DEPTH));
+        env.add_indexer(dev!(Indexer::Zingod, "../../Dockerfile").regtest().finalised_depth(DEPTH));
     env.build().await?;
 
     let (warm, _) = validator.tip().await?;

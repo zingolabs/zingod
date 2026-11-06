@@ -22,7 +22,7 @@ async fn read_surface_serves_the_validators_chain() -> Result<()> {
     let mut env = TestEnv::builder().ready_timeout(READY);
     let validator =
         env.add_validator(Validator::zebrad("6.2.3").regtest().mine_to(Pool::Transparent));
-    let indexer = env.add_indexer(dev!(Indexer::Zainod, "../../Dockerfile").regtest());
+    let indexer = env.add_indexer(dev!(Indexer::Zingod, "../../Dockerfile").regtest());
     env.build().await?;
 
     let tip = validator.generate_blocks(10).await?;

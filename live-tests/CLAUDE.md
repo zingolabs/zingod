@@ -27,7 +27,7 @@ lines and informative.
 ```rust
 let mut env = TestEnv::builder().ready_timeout(READY);
 let validator = env.add_validator(Validator::zebrad("6.2.3").regtest());
-let indexer = env.add_indexer(dev!(Indexer::Zainod, "../../Dockerfile").regtest());
+let indexer = env.add_indexer(dev!(Indexer::Zingod, "../../Dockerfile").regtest());
 env.build().await?;
 ```
 

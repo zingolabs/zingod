@@ -19,7 +19,7 @@ const SHIELD_FEE: u64 = 15_000;
 /// Coinbase → unified address's Orchard receiver (credited to Ironwood: NU6.3 live from 2)
 const FUND: Pool = Pool::Orchard;
 /// Buries a transaction's block below the finalized tip (regtest depth + margin)
-const SEAM_ADVANCE: u32 = ztest::backends::zainod::REGTEST_FINALISED_DEPTH + 5;
+const SEAM_ADVANCE: u32 = ztest::backends::zingod::REGTEST_FINALISED_DEPTH + 5;
 /// Finalized writer's commit lag behind the validator (per batch: frontier moves in steps)
 const SEAM_TIMEOUT: Duration = Duration::from_secs(300);
 /// zingod's mempool mirror poll period
@@ -94,7 +94,7 @@ mod wallet {
     async fn sends_to_every_pool_carry_their_pool_data_and_credit_once() -> Result<()> {
         let mut env = TestEnv::builder().ready_timeout(READY);
         let validator = env.add_validator(Validator::zebrad("6.2.3").regtest().mine_to(FUND));
-        let indexer = env.add_indexer(dev!(Indexer::Zainod, "../../Dockerfile").regtest());
+        let indexer = env.add_indexer(dev!(Indexer::Zingod, "../../Dockerfile").regtest());
         let wallet = env.add_wallet(Wallet::librustzcash());
         env.build().await?;
 
@@ -161,7 +161,7 @@ mod wallet {
         let mut env = TestEnv::builder().ready_timeout(READY);
         let credited = Pool::Ironwood;
         let validator = env.add_validator(Validator::zebrad("6.2.3").regtest().mine_to(FUND));
-        let indexer = env.add_indexer(dev!(Indexer::Zainod, "../../Dockerfile").regtest());
+        let indexer = env.add_indexer(dev!(Indexer::Zingod, "../../Dockerfile").regtest());
         let wallet = env.add_wallet(Wallet::librustzcash());
         env.build().await?;
 
@@ -210,7 +210,7 @@ mod wallet {
         // - Unpublished until the first commit → keep polling
         let deadline = tokio::time::Instant::now() + SEAM_TIMEOUT;
         loop {
-            let durable = indexer.finalized_height(ZainoIndex::CompactBlock).await?;
+            let durable = indexer.finalized_height(ZingodIndex::CompactBlock).await?;
             if durable.is_some_and(|durable| durable >= u32::from(tip)) {
                 break;
             }
@@ -265,7 +265,7 @@ mod wallet {
     async fn unmined_sends_mirrored_streamed_and_credited_only_once_mined() -> Result<()> {
         let mut env = TestEnv::builder().ready_timeout(READY);
         let validator = env.add_validator(Validator::zebrad("6.2.3").regtest().mine_to(FUND));
-        let indexer = env.add_indexer(dev!(Indexer::Zainod, "../../Dockerfile").regtest());
+        let indexer = env.add_indexer(dev!(Indexer::Zingod, "../../Dockerfile").regtest());
         let wallet = env.add_wallet(Wallet::librustzcash());
         env.build().await?;
 
@@ -355,7 +355,7 @@ mod wallet {
     async fn orchard_send_mirrored_at_height_0_promptly_then_served_in_its_block() -> Result<()> {
         let mut env = TestEnv::builder().ready_timeout(READY);
         let validator = env.add_validator(Validator::zebrad("6.2.3").regtest().mine_to(FUND));
-        let indexer = env.add_indexer(dev!(Indexer::Zainod, "../../Dockerfile").regtest());
+        let indexer = env.add_indexer(dev!(Indexer::Zingod, "../../Dockerfile").regtest());
         let wallet = env.add_wallet(Wallet::librustzcash());
         env.build().await?;
 
@@ -445,7 +445,7 @@ mod wallet {
         let mut env = TestEnv::builder().ready_timeout(READY);
         let validator =
             env.add_validator(Validator::zebrad("6.2.3").regtest().mine_to(Pool::Transparent));
-        let indexer = env.add_indexer(dev!(Indexer::Zainod, "../../Dockerfile").regtest());
+        let indexer = env.add_indexer(dev!(Indexer::Zingod, "../../Dockerfile").regtest());
         let wallet = env.add_wallet(Wallet::librustzcash());
         env.build().await?;
 
