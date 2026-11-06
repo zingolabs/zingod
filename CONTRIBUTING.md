@@ -12,8 +12,8 @@ email zingodisclosure@proton.me.
 ## Bug reports and feature requests
 
 Open a GitHub [issue](https://github.com/zingolabs/zingod/issues) using one of
-the templates. For bugs, include the Zingod version or commit, the zebrad
-version, your OS, and your config.
+the templates. For bugs, include the Zingod version or commit, the validator
+(zebrad or zakurad) and its version, your OS, and your config.
 
 ## Communication
 

@@ -1,12 +1,13 @@
 # Zingod
 
 Zingod is a Zcash indexer written in Rust. `zingod` follows the chain from one or more trusted
-[Zebra](https://github.com/ZcashFoundation/zebra) validators and, optionally, Zcash p2p peers,
+validators ([Zebra](https://github.com/ZcashFoundation/zebra) or
+[Zakura](https://github.com/zakura-core/zakura)) and, optionally, Zcash p2p peers,
 builds its own indexes, and serves light wallets over the lightwalletd-compatible
 `CompactTxStreamer` gRPC service.
 
-Validation stays in Zebra and indexing moves to Zingod: the two run as separate processes, on
-separate hosts if you like, and a new index needs no change to the validator
+Validation stays in the validator and indexing moves to Zingod: the two run as separate
+processes, on separate hosts if you like, and a new index needs no change to the validator
 ([who owns what](./docs/architecture.md#1-who-owns-what)).
 
 [![latest release](https://img.shields.io/github/v/tag/zingolabs/zingod?filter=v*&label=latest%20release)](https://github.com/zingolabs/zingod/tags)
@@ -14,8 +15,10 @@ separate hosts if you like, and a new index needs no change to the validator
 
 ## Quick start
 
-You need a Zebra node with JSON-RPC enabled (`[rpc] listen_addr` in `zebrad.toml`). Zingod
-trusts it for validation and reads every block from it.
+You need a Zebra or Zakura node with JSON-RPC enabled (`[rpc] listen_addr` in `zebrad.toml` or
+`zakurad.toml`). Zingod trusts it for validation and reads every block from it, through the
+Zcash JSON-RPC interface that <https://zcash.github.io/rpc/> specifies
+([the methods Zingod calls](./docs/running.md#requirements)).
 
 **1. Write a config.** Every key at its default:
 
@@ -24,7 +27,7 @@ docker run --rm zingodevops/zingod generate-config -o /dev/stdout > zingod.toml
 ```
 
 Set `network` (`mainnet`, `testnet` or `regtest`) and point `[[trusted_validators]]`
-`jsonrpc_address` at your zebrad. Everything else can stay as it is; the
+`jsonrpc_address` at your validator. Everything else can stay as it is; the
 [annotated config](./docs/example_configs/zingod.toml) explains each key.
 
 **2. Run it.** The image runs as UID 1000, keeps its indexes under `/var/lib/zingod` and serves

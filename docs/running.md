@@ -1,14 +1,44 @@
 # Running zingod
 
-`zingod` indexes the Zcash chain from one or more trusted Zebra validators and serves it to
-light wallets over lightwalletd-compatible gRPC. With `[p2p]` on it also takes checked headers,
-blocks and mempool listings from Zcash peers ([architecture §2–3](./architecture.md#2-the-map)).
+`zingod` indexes the Zcash chain from one or more trusted Zebra or Zakura validators and serves
+it to light wallets over lightwalletd-compatible gRPC. With `[p2p]` on it also takes checked
+headers, blocks and mempool listings from Zcash peers
+([architecture §2–3](./architecture.md#2-the-map)).
 The container image: [docker.md](./docker.md). The methods it answers: [rpc_api.md](./rpc_api.md).
 
 ## Requirements
 
-A [Zebra](https://github.com/ZcashFoundation/zebra) node with JSON-RPC enabled through
-`[rpc] listen_addr` in `zebrad.toml`. The live suite tests against zebrad 6.2.3.
+A validator with JSON-RPC enabled:
+
+- [Zebra](https://github.com/ZcashFoundation/zebra) (`zebrad`): `[rpc] listen_addr` in
+  `zebrad.toml`. The live suite tests against zebrad 6.2.3.
+- [Zakura](https://github.com/zakura-core/zakura) (`zakurad`, a Zebra fork): `[rpc] listen_addr`
+  in `zakurad.toml`. Its installer and guides are at <https://zakura.com/>, its image at
+  <https://hub.docker.com/r/zakuracore/zakura>.
+
+Zingod reads a validator through the Zcash JSON-RPC interface, which the Zcash RPC reference at
+<https://zcash.github.io/rpc/> specifies. It calls ten methods of that interface:
+
+| Method               | Specification                                         |
+| -------------------- | ----------------------------------------------------- |
+| `getblock`           | <https://zcash.github.io/rpc/getblock.html>           |
+| `getblockchaininfo`  | <https://zcash.github.io/rpc/getblockchaininfo.html>  |
+| `getblockhash`       | <https://zcash.github.io/rpc/getblockhash.html>       |
+| `getblockheader`     | <https://zcash.github.io/rpc/getblockheader.html>     |
+| `getdeprecationinfo` | <https://zcash.github.io/rpc/getdeprecationinfo.html> |
+| `getinfo`            | <https://zcash.github.io/rpc/getinfo.html>            |
+| `getpeerinfo`        | <https://zcash.github.io/rpc/getpeerinfo.html>        |
+| `getrawmempool`      | <https://zcash.github.io/rpc/getrawmempool.html>      |
+| `getrawtransaction`  | <https://zcash.github.io/rpc/getrawtransaction.html>  |
+| `sendrawtransaction` | <https://zcash.github.io/rpc/sendrawtransaction.html> |
+
+Zakura 1.8.4 lists all ten in the OpenRPC document of its authenticated listener and of its
+restricted, unauthenticated one:
+<https://github.com/zakura-core/zakura/blob/v1.8.4/crates/zakura-rpc/src/methods/tests/openrpc.json>,
+<https://github.com/zakura-core/zakura/blob/v1.8.4/crates/zakura-rpc/src/methods/tests/openrpc-restricted.json>.
+
+An eleventh call, `checkadmission`, is Zingod's own and optional
+([architecture §6](./architecture.md#6-submission)).
 
 ## Install and run
 
@@ -57,10 +87,12 @@ that survives one being down.
 
 `validator_client` picks one client type for every `[[trusted_validators]]` entry:
 
-- `legacy_rpc` (default): JSON-RPC for everything, zebrad or zcashd.
+- `legacy_rpc` (default): JSON-RPC for everything, zebrad, zakurad or zcashd.
 - `grpc`: blocks over zebrad's indexer gRPC at each entry's `indexer_address`, the rest over
   JSON-RPC. It needs a zebrad whose indexer serves `GetBlockRange` (Zingod's zebra fork; stock
-  zebrad lacks it). An entry without `indexer_address` fails boot.
+  zebrad lacks it). An entry without `indexer_address` fails boot. Use `legacy_rpc` with
+  zakurad: its `GetBlockRange` streams `BlockAndHeight`, where Zingod reads `BlockAndHash`
+  (<https://github.com/zakura-core/zakura/blob/v1.8.4/crates/zakura-rpc/proto/indexer.proto>).
 
 The indexer gRPC is plaintext unless `[trusted_validators.indexer_tls]` sets up mutual TLS.
 

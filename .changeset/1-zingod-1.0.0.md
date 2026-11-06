@@ -4,7 +4,9 @@ default: major
 
 # Zingod 1.0.0: a lightwalletd-compatible indexer over trusted Zebra validators
 
-`zingod` reads the chain from one or more Zebra validators it trusts, builds its own indexes and
+`zingod` reads the chain from one or more validators it trusts
+([Zebra](https://github.com/ZcashFoundation/zebra) or
+[Zakura](https://github.com/zakura-core/zakura)), builds its own indexes and
 serves light wallets over the lightwalletd `CompactTxStreamer` gRPC
 ([architecture](../docs/architecture.md), [running zingod](../docs/running.md),
 [container image](../docs/docker.md), [RPC API](../docs/rpc_api.md)). What it does:
