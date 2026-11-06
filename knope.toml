@@ -53,22 +53,10 @@ name = "document-change"
 [[workflows.steps]]
 type = "CreateChangeFile"
 
-# Bump + changelog from `.changeset/`, commit, tag `v$version`, push both
-# - no forge configured → `Release` = the git tag only (no token); the tag push runs
-#   release.yaml, which creates the GitHub release from CHANGELOG.md and publishes the image
+# Bump + CHANGELOG.md from `.changeset/`, nothing else: release.yaml commits, tags and publishes
+# after a reviewer approves (RELEASING.md)
 [[workflows]]
-name = "release"
+name = "prepare-release"
 
 [[workflows.steps]]
 type = "PrepareRelease"
-
-[[workflows.steps]]
-type = "Command"
-command = "git commit -m \"chore: release $version\""
-
-[[workflows.steps]]
-type = "Release"
-
-[[workflows.steps]]
-type = "Command"
-command = "git push --follow-tags"
