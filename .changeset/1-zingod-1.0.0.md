@@ -2,18 +2,18 @@
 default: major
 ---
 
-# Zingod 1.0.0: a lightwalletd-compatible indexer over trusted Zebra validators
+# Zingod 1.0.0: a lightwalletd-compatible indexer over trusted validators
 
-`zingod` reads the chain from one or more validators it trusts
-([Zebra](https://github.com/ZcashFoundation/zebra) or
-[Zakura](https://github.com/zakura-core/zakura)), builds its own indexes and
-serves light wallets over the lightwalletd `CompactTxStreamer` gRPC
-([architecture](../docs/architecture.md), [running zingod](../docs/running.md),
-[container image](../docs/docker.md), [RPC API](../docs/rpc_api.md)). What it does:
+`zingod` reads the chain from one or more Zcash validators it trusts, builds its own indexes and
+serves light wallets over the lightwalletd `CompactTxStreamer` gRPC. Docs:
+[architecture](https://github.com/zingolabs/zingod/blob/v1.0.0/docs/architecture.md),
+[running zingod](https://github.com/zingolabs/zingod/blob/v1.0.0/docs/running.md),
+[container image](https://github.com/zingolabs/zingod/blob/v1.0.0/docs/docker.md),
+[RPC API](https://github.com/zingolabs/zingod/blob/v1.0.0/docs/rpc_api.md).
 
 - **Validators:** 1 to 64 `[[trusted_validators]]`, all equal, scheduled by one traffic balancer;
   a misanswering validator is benched, a down one retried, and two survive one outage.
-  `validator_client = "grpc"` fetches blocks over zebrad's indexer gRPC as raw bytes.
+  `validator_client = "grpc"` fetches blocks over the validator's indexer gRPC as raw bytes.
 - **Peers:** with `[p2p]` on, Zcash peers keep the tip and mempool served through a validator
   outage (state `degraded`), and `SendTransaction` relays through them.
 - **Indexes:** compact blocks (each `CompactTx.fee` filled), block hash → height, commitment-tree
@@ -34,3 +34,6 @@ serves light wallets over the lightwalletd `CompactTxStreamer` gRPC
   native histograms on the admin `/metrics`.
 - **Protocol:** lightwallet-protocol v0.6.0, `GetStandardFee` (ZIP 317), NU7 on Mainnet
   (validators and peers must run Zebra 7.0.0 or later).
+
+Coming from Zaino 0.10: the
+[migration guide](https://github.com/zingolabs/zingod/blob/v1.0.0/docs/migrating-from-zaino.md).

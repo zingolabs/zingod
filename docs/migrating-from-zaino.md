@@ -1,7 +1,3 @@
----
-default: major
----
-
 # Migrating from Zaino 0.10
 
 Zingod 1.0 replaces Zaino: a new daemon, not an upgrade. Nothing from a 0.10 install is read.
@@ -35,11 +31,11 @@ to the validator; wallets keep using gRPC.
 **gRPC.** `zaino.index.v1.IndexedTipService`, `GetBlockNullifiers` and `Ping` answer
 `UNIMPLEMENTED` (poll `GetLatestBlock`; use `GetBlock` or `GetBlockRange` with `poolTypes`).
 `GetBlockRangeNullifiers` and `GetTaddressTxids` are served as deprecated aliases. Status codes
-and the answers that changed: [RPC API](../docs/rpc_api.md).
+and the answers that changed: [RPC API](./rpc_api.md).
 
 **Metrics.** Every `zaino_*` / `zainod_*` family is gone; only `process_*` carries over. The new
 families are `zingod_*`, with native histograms
-([metrics](../docs/running.md#metrics)). Nearest equivalents: `zaino_chain_tip_height` →
+([metrics](./running.md#metrics)). Nearest equivalents: `zaino_chain_tip_height` →
 `zingod_best_tip`, `zaino_sync_fetched_height` → `zingod_fetch_height`,
 `zaino_sync_finalized_height` → `zingod_index_finalized_height{index}`,
 `zaino_grpc_request_duration_seconds` → `zingod_grpc_duration_seconds{method}`,
