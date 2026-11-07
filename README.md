@@ -69,7 +69,8 @@ Developing: `cargo nextest run --workspace` runs the unit tests with no validato
 ## Migrating to Zingod
 
 Zingod reads nothing from a previous indexer's install: its config, data directory and metrics
-are its own. The [changelog](./CHANGELOG.md) lists every config key and metric family.
+are its own. Coming from Zaino: [docs/migrating-from-zaino.md](./docs/migrating-from-zaino.md)
+maps every config key and metric family.
 
 1. Write a config with `zingod generate-config` and set your validator's address and
    credentials. An unknown key refuses to start.
