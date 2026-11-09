@@ -311,11 +311,11 @@ file no longer matches its manifest digest) and `bad_pages` (4 KiB pages whose C
 
 zingod listens on two interfaces:
 
-- **gRPC** (`[serve] grpc_listen_address`): TLS, on a self-signed pair zingod generates at first
-  boot unless `[serve.tls]` names your own certificate pair. `[serve.tls]` with both paths
-  `"plaintext"` serves HTTP/2 in the clear, for a TLS-terminating proxy on a trusted network, and
-  is warned about at startup and every 15 minutes while serving. Its `/readyz` and `/status` are
-  safe for the open internet.
+- **gRPC** (`[serve] grpc_listen_address`): `[serve] tls` picks how it is served. Unset, a
+  loopback address serves plaintext (a wallet on the same host) and any other address refuses to
+  start until `tls` is set. `tls = "off"` serves HTTP/2 in the clear off loopback too, for a
+  TLS-terminating proxy on a trusted network, with a warning at startup. Its `/readyz` and
+  `/status` are safe for the open internet.
 - **Admin** (`[metrics] listen_address`, off by default): no authentication or encryption, and
   the metrics publish the chain tip, traffic and validator addresses. zingod warns at startup
   when it binds a non-private address. Keep it on loopback or a network only the scraper reaches.
@@ -332,11 +332,11 @@ A bad pair fails startup. A renewed pair is picked up within a minute with no re
 ACME client renewing in place needs no hook; one that fails to load keeps the previous pair
 serving.
 
-Without `[serve.tls]`, zingod writes `cert.pem` and `key.pem` (mode
+With `tls = "self_signed"`, zingod writes `cert.pem` and `key.pem` (mode
 0600, ECDSA P-256, no expiry) under `<state_dir>/tls` and serves that pair from then on; each
 startup logs its `sha256:` fingerprint for a client that pins it. No CA signs it, so a wallet
-verifying against system roots refuses the connection: wallets at large need `[serve.tls]` with a
-CA-issued pair. Its names are `localhost`, the loopbacks and `grpc_listen_address`'s own address;
+verifying against system roots (zingolib among them) refuses the connection: wallets at large
+need a CA-issued pair. Its names are `localhost`, the loopbacks and `grpc_listen_address`'s own address;
 delete `cert.pem` to have one re-issued for the kept key, for instance after the address changes.
 A `cert.pem` with no key beside it fails startup rather than being replaced.
 
@@ -358,9 +358,8 @@ it send a [PROXY protocol](https://www.haproxy.org/download/2.9/doc/proxy-protoc
 (v1 or v2) naming the client:
 
 ```toml
-[serve.tls]              # the proxy terminates TLS
-cert_path = "plaintext"
-key_path = "plaintext"
+[serve]
+tls = "off"              # the proxy terminates TLS
 
 [grpc]
 trusted_proxies = ["10.0.0.5/32"]

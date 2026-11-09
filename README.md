@@ -27,14 +27,17 @@ docker run --rm zingodevops/zingod generate-config -o /dev/stdout > zingod.toml
 ```
 
 Set `network` (`mainnet`, `testnet` or `regtest`) and point `[[trusted_validators]]`
-`jsonrpc_address` at your validator. Everything else can stay as it is; the
+`jsonrpc_address` at your validator. The container listens on every interface, so it needs
+`tls` under `[serve]`: `tls = "off"` for a wallet on this host (the port below is published on
+loopback only), or a certificate pair for wallets elsewhere
+([Network exposure](./docs/running.md#network-exposure)). Everything else can stay as it is; the
 [annotated config](./docs/example_configs/zingod.toml) explains each key.
 
 **2. Run it.** The image runs as UID 1000, keeps its indexes under `/var/lib/zingod` and serves
 gRPC on 8137:
 
 ```sh
-docker run -d --name zingod -p 8137:8137 \
+docker run -d --name zingod -p 127.0.0.1:8137:8137 \
   -v ./zingod.toml:/etc/zingod/zingod.toml:ro \
   -v zingod-data:/var/lib/zingod \
   zingodevops/zingod
@@ -42,16 +45,16 @@ docker run -d --name zingod -p 8137:8137 \
 
 **3. Wait for the indexes.** The first start builds every index from the validator: about an hour
 on NVMe with the validator on the same host, longer over a network. Or skip the sync and
-[bootstrap from a snapshot](#migrating-to-zingod). The gRPC port also answers plain HTTPS
-(self-signed by default): `/status` reports the [state](./docs/running.md#states) (`syncing`,
-then `serving`) and the tip, and `/readyz` is 200 once wallets can be served:
+[bootstrap from a snapshot](#migrating-to-zingod). The gRPC port also answers plain HTTP:
+`/status` reports the [state](./docs/running.md#states) (`syncing`, then `serving`) and the tip,
+and `/readyz` is 200 once wallets can be served:
 
 ```sh
-curl -sk https://localhost:8137/status
-curl -skf https://localhost:8137/readyz && echo serving
+curl -s http://localhost:8137/status
+curl -sf http://localhost:8137/readyz && echo serving
 ```
 
-Point a light wallet at `localhost:8137`. [Running zingod](./docs/running.md) covers the rest:
+Point a light wallet at `http://localhost:8137`. [Running zingod](./docs/running.md) covers the rest:
 TLS, the admin listener and metrics, p2p peers, `zingod hold` for maintenance, systemd, and what
 to expose to the internet. [Docker](./docs/docker.md) covers volumes, TLS mounts and Compose.
 

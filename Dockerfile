@@ -43,7 +43,7 @@ USER zingod
 EXPOSE 8137
 
 # Public /readyz: 200 = serving | degraded (wget: non-2xx = exit 1)
-# - HTTPS (own loopback listener: certificate unchecked, self-signed by default), else [serve.tls] paths "plaintext"
+# - HTTPS (own loopback listener: certificate unchecked, self_signed passes), else tls = "off"
 # - another port = override (`--health-cmd`, compose `healthcheck:`)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --start-interval=5s \
     CMD wget -q -O /dev/null --no-check-certificate https://127.0.0.1:8137/readyz || \
