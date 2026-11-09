@@ -5595,9 +5595,9 @@ dependencies = [
 
 [[package]]
 name = "ztest"
-version = "0.2.1"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e89af2b258aa7aeed27e43267116e562741ac4c0bf7b822c15449578b4f768b"
+checksum = "6ec202a679bc7310ccde7c53702537c25e25883c52453c768e8ab9a11e917d28"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5671,9 +5671,9 @@ dependencies = [
 
 [[package]]
 name = "ztest_attr"
-version = "0.2.1"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fb0329b9ff18e60568e945e8cad76db7ff7d9b8d28e4ebe5e494ac814121d15d"
+checksum = "673876b45ec01b42860941874ac51655a316b355830ee10436bf8405a54577e3"
 dependencies = [
  "proc-macro2",
  "syn 2.0.119",
@@ -5681,9 +5681,9 @@ dependencies = [
 
 [[package]]
 name = "ztest_macros"
-version = "0.2.1"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a37f3b125d8a300faa552d8fedc5e9e406078b94075d1c5362ce56b2d33920b3"
+checksum = "70da2cb12c2e80761b0df8e56a57c530a0614ce54cbc03483f58c6452bb3d998"
 dependencies = [
  "proc-macro2",
  "quote",
