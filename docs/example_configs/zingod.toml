@@ -168,7 +168,7 @@ queue_mib = 256
 # merge_mib_per_sec = 200
 
 # One table per index: `enabled` (default true; off = its methods UNIMPLEMENTED) and `path`
-# (default $XDG_CACHE_HOME/zingod/indexes/<name>); an omitted table takes both defaults
+# (default $XDG_DATA_HOME/zingod/indexes/<name>); an omitted table takes both defaults
 [index.compact_block]
 # GetBlock, GetBlockRange (GetLatestBlock, GetLightdInfo = the served tip, either way)
 # - its fee index (each CompactTx.fee) lives beside it, in `utxo_set`

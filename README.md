@@ -74,7 +74,7 @@ maps every config key and metric family.
 
 1. Write a config with `zingod generate-config` and set your validator's address and
    credentials. An unknown key refuses to start.
-2. Give it an empty data directory: `/var/lib/zingod` in the image, `$XDG_CACHE_HOME/zingod` on a
+2. Give it an empty data directory: `/var/lib/zingod` in the image, `$XDG_DATA_HOME/zingod` on a
    host. Zingod keeps one directory per index under `indexes/`.
 3. Either let the first start sync from your validator, or download the indexes: with a fast
    connection, a published snapshot bootstraps every index before boot. Add to `zingod.toml`:
