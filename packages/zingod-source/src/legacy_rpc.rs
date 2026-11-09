@@ -31,7 +31,7 @@ impl ZcashLegacyRpcClient {
         let rpc = RpcClient::new(RpcClientConfig {
             url: validator_url(&endpoint.address)?,
             name: endpoint.address.clone(),
-            auth: endpoint.auth.credentials()?,
+            auth: endpoint.auth.clone(),
             timeouts: endpoint.timeouts,
             limits: endpoint.limits,
         });

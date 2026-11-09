@@ -15,6 +15,8 @@ pub enum RpcError {
     ResponseBodyTooLarge { max: usize },
     #[error("batch reply does not answer each call exactly once")]
     BatchMismatch,
+    #[error("credentials: {0}")]
+    Credentials(#[from] crate::EndpointError),
 }
 
 impl RpcError {
@@ -24,7 +26,7 @@ impl RpcError {
         match self {
             RpcError::Http(inner) if inner.is_timeout() => FailureMode::Timeout,
             RpcError::Http(_) => FailureMode::Connection,
-            RpcError::Status(401 | 403) => FailureMode::Auth,
+            RpcError::Status(401 | 403) | RpcError::Credentials(_) => FailureMode::Auth,
             RpcError::Status(code) => FailureMode::HttpStatus(*code),
             RpcError::Rpc { code, .. } => FailureMode::RpcError(*code),
             // oversized body = `Parse`, not retryable (same request → same oversized reply)
