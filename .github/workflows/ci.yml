@@ -19,11 +19,14 @@ permissions:
 # - CARGO_INCREMENTAL=0: sccache skips incremental artifacts; rust-cache sets it too
 # - CARGO_PROFILE_TEST_DEBUG: backtrace line numbers only (full DWARF = the link time and half
 #   the cache; `[profile.test] debug = true` stays for local builds)
+# - CARGO_PROFILE_TEST_OPT_LEVEL: workspace crates unoptimized (test binaries = uncacheable by
+#   sccache, rebuilt every run: ~4× faster codegen); deps stay at 3 (`[profile.test.package."*"]`)
 env:
   RUSTC_WRAPPER: sccache
   SCCACHE_GHA_ENABLED: "true"
   CARGO_INCREMENTAL: "0"
   CARGO_PROFILE_TEST_DEBUG: line-tables-only
+  CARGO_PROFILE_TEST_OPT_LEVEL: "0"
 
 # every run step inside the flake devshell (flake.lock pins all tools)
 defaults:
