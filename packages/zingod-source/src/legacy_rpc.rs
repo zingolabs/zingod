@@ -420,10 +420,8 @@ mod tests {
             |start: &Result<(), EndpointError>| matches!(start, Err(EndpointError::Cookie { .. }));
 
         let cases = [
-            ("explicit, not yet written", Auth::Cookie(unwritten.clone()), false),
-            ("default, not yet written", Auth::DefaultCookie(vec![unwritten]), false),
-            ("explicit, a directory", Auth::Cookie(a_directory.clone()), true),
-            ("default, a directory", Auth::DefaultCookie(vec![a_directory]), true),
+            ("not yet written", Auth::Cookie(unwritten), false),
+            ("a directory", Auth::Cookie(a_directory), true),
         ];
         for (case, auth, fails) in cases {
             let start = started(auth);

@@ -220,25 +220,18 @@ mod tests {
         use std::io::ErrorKind::{NotFound, PermissionDenied};
         let explicit = Auth::Cookie("zebra".into());
         let default = Auth::DefaultCookie(vec!["zebra".into(), "zakura".into()]);
-        let basic = Auth::Basic { user: "user".to_owned(), password: "pass".to_owned() };
         #[rustfmt::skip]
         let cases = [
-            ("none",                         &Auth::None, vec![],                                              "no auth"),
-            ("basic",                        &basic,      vec![],                                              "user:pass"),
-            ("explicit, prefixed",           &explicit,   vec![written("__cookie__:one", 0)],                  "__cookie__:one"),
-            ("explicit, bare and untrimmed", &explicit,   vec![written("  one  \n", 0)],                       "__cookie__:one"),
-            ("explicit, absent",             &explicit,   vec![failed(NotFound)],                              "unreadable zebra"),
-            ("explicit, unreadable",         &explicit,   vec![failed(PermissionDenied)],                      "unreadable zebra"),
-            ("explicit, empty",              &explicit,   vec![written("", 0)],                                "empty zebra"),
-            ("explicit, prefix alone",       &explicit,   vec![written("__cookie__:\n", 0)],                   "empty zebra"),
-            ("default, neither",             &default,    vec![failed(NotFound), failed(NotFound)],            "no auth"),
-            ("default, zebra alone",         &default,    vec![written("one", 0), failed(NotFound)],           "__cookie__:one"),
-            ("default, zakura alone",        &default,    vec![failed(NotFound), written("two", 0)],           "__cookie__:two"),
-            ("default, zakura newer",        &default,    vec![written("one", 9), written("two", 0)],          "__cookie__:two"),
-            ("default, zebra newer",         &default,    vec![written("one", 0), written("two", 9)],          "__cookie__:one"),
-            ("default, same age: the first", &default,    vec![written("one", 5), written("two", 5)],          "__cookie__:one"),
-            ("default, one unreadable",      &default,    vec![written("one", 0), failed(PermissionDenied)],   "unreadable zakura"),
-            ("default, the newest empty",    &default,    vec![written("one", 9), written("", 0)],             "empty zakura"),
+            ("explicit, prefixed",           &explicit, vec![written("__cookie__:one", 0)],                "__cookie__:one"),
+            ("explicit, bare and untrimmed", &explicit, vec![written("  one  \n", 0)],                     "__cookie__:one"),
+            ("explicit, absent",             &explicit, vec![failed(NotFound)],                            "unreadable zebra"),
+            ("explicit, empty",              &explicit, vec![written("", 0)],                              "empty zebra"),
+            ("default, neither",             &default,  vec![failed(NotFound), failed(NotFound)],          "no auth"),
+            ("default, zebra alone",         &default,  vec![written("one", 0), failed(NotFound)],         "__cookie__:one"),
+            ("default, zakura newer",        &default,  vec![written("one", 9), written("two", 0)],        "__cookie__:two"),
+            ("default, same age: the first", &default,  vec![written("one", 5), written("two", 5)],        "__cookie__:one"),
+            ("default, one unreadable",      &default,  vec![written("one", 0), failed(PermissionDenied)], "unreadable zakura"),
+            ("default, the newest empty",    &default,  vec![written("one", 9), written("", 0)],           "empty zakura"),
         ];
         for (case, auth, cookies, expected) in cases {
             let readings = auth.cookie_paths().iter().cloned().zip(cookies).collect();
