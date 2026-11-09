@@ -23,6 +23,11 @@ pub(crate) fn default_state() -> Option<PathBuf> {
     Some(dirs::data_dir()?.join("zingod/state"))
 }
 
+pub(crate) fn default_validator_cookies() -> Vec<PathBuf> {
+    let cookies = |cache: PathBuf| ["zebra", "zakura"].map(|dir| cache.join(dir).join(".cookie"));
+    dirs::cache_dir().map(cookies).map(Vec::from).unwrap_or_default()
+}
+
 /// `<cache dir>/zingod/peers`: zebra-network's peer address cache
 pub(crate) fn default_peer_cache() -> Option<PathBuf> {
     Some(dirs::cache_dir()?.join("zingod/peers"))
