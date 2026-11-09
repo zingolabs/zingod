@@ -28,6 +28,7 @@ impl ZcashLegacyRpcClient {
     /// Validator at `endpoint`, unprobed (down at boot = the first call's failure + the caller's
     /// retry, never a boot failure)
     pub fn new(endpoint: &Endpoint) -> Result<Self, EndpointError> {
+        endpoint.auth.startable()?;
         let rpc = RpcClient::new(RpcClientConfig {
             url: validator_url(&endpoint.address)?,
             name: endpoint.address.clone(),
@@ -395,9 +396,39 @@ fn raw_batches(listed: &[MempoolListed], budget: u64) -> Vec<&[MempoolListed]> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Auth;
 
     fn rpc(code: i64, message: &str) -> RpcError {
         RpcError::Rpc { code, message: message.to_string() }
+    }
+
+    #[test]
+    fn only_a_cookie_that_can_never_be_read_fails_the_start() {
+        let dir = tempfile::tempdir().expect("the OS temp directory is writable");
+        let unwritten = dir.path().join("unwritten");
+        let a_directory = dir.path().to_owned();
+        let started = |auth: Auth| {
+            let endpoint = Endpoint {
+                address: "127.0.0.1:8232".to_owned(),
+                auth,
+                timeouts: crate::Timeouts::default(),
+                limits: crate::LinkLimits::default(),
+            };
+            ZcashLegacyRpcClient::new(&endpoint).map(drop)
+        };
+        let refused =
+            |start: &Result<(), EndpointError>| matches!(start, Err(EndpointError::Cookie { .. }));
+
+        let cases = [
+            ("explicit, not yet written", Auth::Cookie(unwritten.clone()), false),
+            ("default, not yet written", Auth::DefaultCookie(vec![unwritten]), false),
+            ("explicit, a directory", Auth::Cookie(a_directory.clone()), true),
+            ("default, a directory", Auth::DefaultCookie(vec![a_directory]), true),
+        ];
+        for (case, auth, fails) in cases {
+            let start = started(auth);
+            assert_eq!(refused(&start), fails, "{case}: {start:?}");
+        }
     }
 
     /// Batches keep listing order, cover it exactly, close at 100 calls or before passing the
