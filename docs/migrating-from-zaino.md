@@ -8,7 +8,7 @@ Zingod 1.0 replaces Zaino: a new daemon, not an upgrade. Nothing from a 0.10 ins
 | binary `zainod`, crates `zaino-*` (on crates.io) | `zingod`, crates `zingod-*` (not published) |
 | image `zingodevops/zainod`, user `zaino`, `/app/config`, `/app/data` | `zingodevops/zingod`, user `zingod`, `/etc/zingod/zingod.toml`, `/var/lib/zingod` |
 | `$XDG_CONFIG_HOME/zaino/zainod.toml`, `ZAINO_*` overrides | `$XDG_CONFIG_HOME/zingod/zingod.toml`, `ZINGOD_CONFIG_*` (`__` nests) |
-| LMDB finalised state under `storage.database` | one directory per index under `<cache dir>/zingod/indexes`; delete the old one |
+| LMDB finalised state under `storage.database` | one directory per index under `<data dir>/zingod/indexes`; delete the old one |
 | cargo features (`prometheus`, `no_tls_*`, …) | none: metrics, admin listener and every index always built |
 
 **Config.** The file is new and an unknown key refuses to start, so begin from

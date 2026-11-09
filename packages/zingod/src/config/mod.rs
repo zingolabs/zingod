@@ -749,6 +749,19 @@ pub(crate) fn load_config(file_path: &Path) -> Result<DaemonConfig, IndexerError
         .try_deserialize()
         .map_err(|e| IndexerError::Config(format!("parsing configuration: {e}")))?;
     let resolved = parsed.resolve()?;
+    // before any subcommand opens, or a snapshot fills, an empty default directory
+    for index in resolved.indexes.iter() {
+        if let Some(old_root) = paths::unmoved_index(index.kind, &index.path) {
+            let new_root = index.path.parent().unwrap_or(&index.path);
+            return Err(IndexerError::Config(format!(
+                "index.{}.path: indexes found at {}, the zingod 1.0.0 default; move that \
+                 directory to {} or set each index.<name>.path to its directory there",
+                index.kind.name(),
+                old_root.display(),
+                new_root.display(),
+            )));
+        }
+    }
 
     info!(path = %file_path.display(), "Config loaded");
     Ok(resolved)
@@ -819,6 +832,45 @@ enabled = false
             "utxo_set beside the file's compact_block, defaults for the unset, tree_state off by \
              env over its file path, transparent_address off by file"
         );
+    }
+
+    #[test]
+    fn indexes_left_at_the_1_0_0_cache_default_refuse_load_until_moved_or_named() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (cache, data) = (dir.path().join("cache"), dir.path().join("data"));
+        let (old_root, new_root) = (cache.join("zingod/indexes"), data.join("zingod/indexes"));
+        std::fs::create_dir_all(old_root.join("compact_block")).expect("1.0.0 index dir");
+        let validator = "[[trusted_validators]]\njsonrpc_address = \"127.0.0.1:18232\"\n";
+        let defaults = write(&dir, "defaults.toml", validator);
+        let named = format!(
+            "{validator}[index.compact_block]\npath = \"{}\"\n",
+            old_root.join("compact_block").display()
+        );
+        let named = write(&dir, "named.toml", &named);
+        // nextest = one process per test (no leak into another test)
+        std::env::set_var("XDG_CACHE_HOME", &cache);
+        std::env::set_var("XDG_DATA_HOME", &data);
+
+        let refused = load_config(&defaults).map(|_| ()).map_err(|e| e.to_string());
+        let kept = load_config(&named).map(|c| c.indexes.get(IndexKind::CompactBlock).cloned());
+        std::fs::create_dir_all(data.join("zingod")).expect("data home");
+        std::fs::rename(&old_root, &new_root).expect("operator moves the directory");
+        let moved = load_config(&defaults).map(|c| c.indexes.get(IndexKind::CompactBlock).cloned());
+        std::env::remove_var("XDG_CACHE_HOME");
+        std::env::remove_var("XDG_DATA_HOME");
+
+        let message = format!(
+            "index.compact_block.path: indexes found at {}, the zingod 1.0.0 default; move that \
+             directory to {} or set each index.<name>.path to its directory there",
+            old_root.display(),
+            new_root.display()
+        );
+        assert_eq!(refused, Err(format!("configuration error: {message}")), "default + old dir");
+        let path = |c: Option<IndexConfig>| c.map(|c| c.path);
+        let kept = kept.expect("explicit old path loads");
+        assert_eq!(path(kept), Some(old_root.join("compact_block")), "named path kept as is");
+        let moved = moved.expect("moved loads");
+        assert_eq!(path(moved), Some(new_root.join("compact_block")), "default after the move");
     }
 
     /// No home dir: an unset path = error naming its key, a set one kept
