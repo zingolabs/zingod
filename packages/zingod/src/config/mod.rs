@@ -141,6 +141,15 @@ impl TrustedValidatorTable {
             priority,
         } = self;
         let auth = match (cookie_path, user, password) {
+            // a validator elsewhere is never sent this host's cookie
+            (None, None, None) if is_loopback_host(&address) => {
+                let candidates = paths::default_validator_cookies();
+                if candidates.is_empty() {
+                    Auth::None
+                } else {
+                    Auth::DefaultCookie(candidates)
+                }
+            }
             (None, None, None) => Auth::None,
             (Some(path), None, None) => Auth::Cookie(path),
             (None, Some(user), Some(password)) => Auth::Basic { user, password },
@@ -702,6 +711,14 @@ fn resolved_path(
     path.or_else(default).ok_or_else(missing)
 }
 
+/// `host:port` naming this machine: `localhost` or a loopback IP
+fn is_loopback_host(address: &str) -> bool {
+    let host = address.rsplit_once(':').map_or(address, |(host, _)| host);
+    let host = host.trim_start_matches('[').trim_end_matches(']');
+    host.eq_ignore_ascii_case("localhost")
+        || host.parse::<std::net::IpAddr>().is_ok_and(|ip| ip.to_canonical().is_loopback())
+}
+
 fn is_private_listen_addr(addr: &SocketAddr) -> bool {
     match addr.ip() {
         std::net::IpAddr::V4(ipv4) => ipv4.is_private() || ipv4.is_loopback(),
@@ -1242,7 +1259,21 @@ key_path = "/etc/zingod/indexer-client-key.pem"
             "eu's balancer limits, indexer, tier"
         );
         let local = local.resolve().expect("no credentials");
-        assert_eq!((local.endpoint.auth, local.indexer), (Auth::None, None), "local: neither");
+        let defaults = Auth::DefaultCookie(paths::default_validator_cookies());
+        assert_eq!(
+            (local.endpoint.auth, local.indexer),
+            (defaults, None),
+            "local: default cookies"
+        );
+        for address in ["localhost:8232", "[::1]:8232", "zebra-eu:8232", "10.0.0.5:8232"] {
+            let bare = TrustedValidatorTable {
+                jsonrpc_address: address.to_owned(),
+                ..TrustedValidatorTable::default()
+            };
+            let auth = bare.resolve().expect("no credentials").endpoint.auth;
+            let remote = address.starts_with("zebra-eu") || address.starts_with("10.");
+            assert_eq!(matches!(auth, Auth::None), remote, "{address}: no cookie off this host");
+        }
 
         let cookie = |user: Option<&str>, password: Option<&str>| TrustedValidatorTable {
             cookie_path: Some("/zebra/.cookie".into()),

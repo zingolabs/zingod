@@ -30,10 +30,12 @@ let grpc = ZebraIndexerGrpcClient::new(legacy, indexer_address, tls.as_ref(), Ti
 ```
 
 - `new` never contacts the validator: an unreachable validator is the caller's retry, never a
-  construction failure. `EndpointError` = a bad address or TLS config, an unreadable cookie or
-  TLS file.
+  construction failure. `EndpointError` = a bad address or TLS config, or an unreadable TLS file.
 - `Auth`: `Cookie` sends basic auth as `__cookie__` with the file's token, `Basic` the pair,
-  `None` no `Authorization` header.
+  `None` no `Authorization` header. `DefaultCookie(candidates)` = the one candidate file present
+  (none = no auth, several = `EndpointError::AmbiguousCookie`).
+- Cookies are read per request (a validator rewrites its cookie on every start). An unreadable or
+  ambiguous cookie fails that request as `FailureMode::Auth`, retried like any other failure.
 - One attempt per call. Which validator, how many requests in flight, retries and hedges are the
   balancer's (`zingod-traffic`): this crate never re-sends, and a batch item's refusal (zebrad's
   `-1` work queue full included) is that item's own outcome.

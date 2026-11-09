@@ -4,7 +4,7 @@
 //! - no probe: reachability = the caller's retry loop (validator down at boot ≠ fatal)
 
 use std::num::NonZeroU32;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use crate::ResponseSizeCap;
@@ -16,6 +16,9 @@ pub enum EndpointError {
 
     #[error("cannot read validator cookie {path}: {source}")]
     Cookie { path: String, source: std::io::Error },
+
+    #[error("validator cookies at both {0} and {1}: set this validator's cookie_path")]
+    AmbiguousCookie(String, String),
 
     #[error("cannot read indexer TLS {role} {path}: {source}")]
     TlsFile { role: &'static str, path: String, source: std::io::Error },
@@ -31,31 +34,47 @@ pub struct Endpoint {
 }
 
 /// Credentials a validator expects
+///
+/// - `DefaultCookie` = each validator's default cookie file, whichever exists (none = no auth)
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Auth {
     None,
     Cookie(PathBuf),
+    DefaultCookie(Vec<PathBuf>),
     Basic { user: String, password: String },
 }
 
 impl Auth {
-    /// Basic-auth pair sent (`None` = no auth)
+    /// Basic-auth pair sent (`None` = no auth), read per request (a validator restart rewrites
+    /// its cookie)
     ///
     /// - `__cookie__:` prefix stripped if present (older validators, some packagers omit it)
     pub(crate) fn credentials(&self) -> Result<Option<(String, String)>, EndpointError> {
         match self {
             Self::None => Ok(None),
             Self::Basic { user, password } => Ok(Some((user.clone(), password.clone()))),
-            Self::Cookie(path) => {
-                let contents = std::fs::read_to_string(path).map_err(|source| {
-                    EndpointError::Cookie { path: path.display().to_string(), source }
-                })?;
-                let token = contents.trim();
-                let token = token.strip_prefix("__cookie__:").unwrap_or(token);
-                Ok(Some(("__cookie__".to_string(), token.to_string())))
+            Self::Cookie(path) => cookie(path).map(Some),
+            Self::DefaultCookie(candidates) => {
+                let mut present = candidates.iter().filter(|path| path.exists());
+                match (present.next(), present.next()) {
+                    (None, _) => Ok(None),
+                    (Some(path), None) => cookie(path).map(Some),
+                    (Some(first), Some(second)) => Err(EndpointError::AmbiguousCookie(
+                        first.display().to_string(),
+                        second.display().to_string(),
+                    )),
+                }
             }
         }
     }
+}
+
+fn cookie(path: &Path) -> Result<(String, String), EndpointError> {
+    let contents = std::fs::read_to_string(path)
+        .map_err(|source| EndpointError::Cookie { path: path.display().to_string(), source })?;
+    let token = contents.trim();
+    let token = token.strip_prefix("__cookie__:").unwrap_or(token);
+    Ok(("__cookie__".to_string(), token.to_string()))
 }
 
 /// - `read` = silence, never total duration (multi-MB block over a slow link must finish)
@@ -111,30 +130,36 @@ pub(crate) fn validator_url(address: &str) -> Result<String, EndpointError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write as _;
 
-    /// User always `__cookie__`, token trimmed with or without its prefix (packagers write both)
+    /// - user always `__cookie__`, token trimmed with or without its prefix (packagers write both)
+    /// - each call reads the file: a validator restart's new cookie is the next one sent
     #[test]
-    fn cookie_credentials_are_the_cookie_user_and_its_trimmed_token() {
-        for contents in ["__cookie__:sekrit", "  sekrit  \n"] {
-            let mut file = tempfile::NamedTempFile::new().expect("temp file");
-            write!(file, "{contents}").expect("write cookie");
+    fn cookie_credentials_follow_the_files_on_disk() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let (zebra, zakura) = (dir.path().join("zebra.cookie"), dir.path().join("zakura.cookie"));
+        let sent = |auth: &Auth| auth.credentials().map(|pair| pair.map(|(_, token)| token));
+        let explicit = Auth::Cookie(zebra.clone());
+        let default = Auth::DefaultCookie(vec![zebra.clone(), zakura.clone()]);
 
-            let auth =
-                Auth::Cookie(file.path().to_owned()).credentials().map_err(|e| e.to_string());
+        let missing = explicit.credentials();
+        assert!(
+            matches!(missing, Err(EndpointError::Cookie { .. })),
+            "explicit, absent: {missing:?}"
+        );
+        assert_eq!(sent(&default).ok(), Some(None), "default, neither present: no auth");
 
-            let token = Some(("__cookie__".to_owned(), "sekrit".to_owned()));
-            assert_eq!(auth, Ok(token), "cookie file {contents:?}");
-        }
-    }
+        std::fs::write(&zebra, "__cookie__:first").expect("validator start");
+        let user = explicit.credentials().ok().flatten().map(|(user, _)| user);
+        assert_eq!(user.as_deref(), Some("__cookie__"), "cookie user");
+        assert_eq!(sent(&explicit).ok(), Some(Some("first".into())), "explicit, prefixed");
+        assert_eq!(sent(&default).ok(), Some(Some("first".into())), "default, one present");
 
-    #[test]
-    fn an_unreadable_cookie_is_refused_naming_it() {
-        let missing = Auth::Cookie(PathBuf::from("/nonexistent/cookie")).credentials();
+        std::fs::write(&zebra, "  second  \n").expect("validator restart");
+        assert_eq!(sent(&explicit).ok(), Some(Some("second".into())), "re-read, bare + trimmed");
 
-        let named =
-            matches!(&missing, Err(EndpointError::Cookie { path, .. }) if path.ends_with("cookie"));
-        assert!(named, "/nonexistent/cookie: {missing:?}");
+        std::fs::write(&zakura, "__cookie__:other").expect("second validator");
+        let both = default.credentials();
+        assert!(matches!(both, Err(EndpointError::AmbiguousCookie(..))), "default, both: {both:?}");
     }
 
     #[test]

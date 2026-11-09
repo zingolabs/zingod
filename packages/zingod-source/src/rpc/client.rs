@@ -13,7 +13,7 @@ use zingod_primitives::protocol::MAX_BLOCK_BYTES;
 use super::envelope;
 use super::error::RpcError;
 use crate::metrics;
-use crate::{LinkLimits, Timeouts};
+use crate::{Auth, LinkLimits, Timeouts};
 
 /// JSON-RPC framing around one result (id, version, keys)
 pub(crate) const REPLY_ENVELOPE_BYTES: usize = 1024;
@@ -60,7 +60,7 @@ pub(crate) struct Call {
 pub(crate) struct RpcClientConfig {
     pub(crate) url: String,
     pub(crate) name: String,
-    pub(crate) auth: Option<(String, String)>,
+    pub(crate) auth: Auth,
     pub(crate) timeouts: Timeouts,
     pub(crate) limits: LinkLimits,
 }
@@ -77,7 +77,7 @@ enum Wire {
     Http {
         client: reqwest::Client,
         url: String,
-        auth: Option<(String, String)>,
+        auth: Auth,
     },
     /// In-process server: the same bytes, no socket (paused-clock tests)
     #[cfg(any(test, feature = "testing"))]
@@ -170,7 +170,7 @@ impl RpcClient {
         };
         let mut request =
             client.post(url).header("Content-Type", "application/json").body(body.to_string());
-        if let Some((user, pass)) = auth {
+        if let Some((user, pass)) = auth.credentials()? {
             request = request.basic_auth(user, Some(pass));
         }
 
@@ -278,7 +278,7 @@ mod tests {
         let config = RpcClientConfig {
             url,
             name: name.to_owned(),
-            auth: None,
+            auth: Auth::None,
             timeouts: Timeouts::default(),
             limits,
         };
