@@ -59,6 +59,15 @@ timers? If not, downgrade. Leave a brief comment only if the choice is
 non-obvious (e.g. "multi_thread required: test exercises a race between
 writer and reader on the db").
 
+## No upgrade shims, no tests for them
+
+- Code = current release only: no detection or handling of a previous release's config, values,
+  defaults or layout. The change file tells upgraders what to do; a code-side migration needs
+  the maintainer's explicit approval.
+- A test pins behaviour the code keeps for its whole life. Never: tests of transitional code,
+  `env::set_var` or other process-global mutation, re-tests of a dependency, verbatim copies of
+  error strings.
+
 ## Disk and wire boundaries: named functions, not `From`/`TryFrom`
 
 Bytes coming off disk or off the wire are the input-validation step, so the

@@ -10,6 +10,5 @@ address refuses to start, naming the three choices: the self-signed default it r
 certificate no wallet verifying against public roots accepts. TLS off away from loopback warns
 once at startup, no longer every 15 minutes.
 
-- Was `cert_path = "plaintext"` + `key_path = "plaintext"`: now `tls = "off"` (the old pair is
-  refused with that hint)
+- Was `cert_path = "plaintext"` + `key_path = "plaintext"`: replace the table with `tls = "off"`
 - Was no `[serve.tls]` off loopback (container image included): set `tls`
