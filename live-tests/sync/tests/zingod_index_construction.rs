@@ -1,7 +1,7 @@
 //! Mainnet light-wallet index: built from empty to the live tip, then held to zebra
 //!
 //! - zebra = optimized fork (`elicbarbieri/zebra` `perf/indexer-block-range-v7`: v7.0.0 + lazy point
-//!   decompression, stored-bytes `GetBlockRange`), restored at `IRONWOOD_MAINNET`, following mainnet
+//!   decompression, stored-bytes `GetBlockRange`), restored at `NU7_MAINNET`, following mainnet
 //! - `index`: blocks over zebrad's indexer gRPC (`validator_client = "grpc"`), the rest over
 //!   JSON-RPC; at completion each index held to zebra + `zingod verify`
 //! - Throughout: every 5 s the durable tip's block + trees vs zebra; durable extents never shrink
@@ -17,7 +17,7 @@ use anyhow::Context as _;
 use serde_json::{json, Value};
 use ztest::loadtest::reference::{block_diff, shielded, tree_state_diff, Fees, Zebra};
 use ztest::prelude::*;
-use ztest::snapshots::IRONWOOD_MAINNET;
+use ztest::snapshots::NU7_MAINNET;
 use ztest::sync::Severity::Fatal;
 use ztest::sync::{hours, mins, secs, Op, OpSet, SyncOutcome, SyncRunner};
 use ztest::zebrad_sync::SyncBudget;
@@ -104,7 +104,7 @@ const FETCHED_OPS: [Op; 6] = [
     Op::IronwoodAction,
 ];
 
-#[ztest::needs(IRONWOOD_MAINNET)]
+#[ztest::needs(NU7_MAINNET)]
 #[ztest::sync_test(
     name = "zingod_index_construction",
     description = "light-wallet indexes built from empty to the live mainnet tip, then held to zebra",
@@ -112,7 +112,7 @@ const FETCHED_OPS: [Op; 6] = [
     timeout = "60h",
     qos = sync,
     footprint = "16c/20Gi",
-    tags = ["mainnet", "zingod", "index", "light-wallet", "ironwood", "live-tip"],
+    tags = ["mainnet", "zingod", "index", "light-wallet", "nu7", "live-tip"],
 )]
 async fn zingod_index_construction(run: SyncRunner) -> SyncOutcome {
     let topology = run.topology(|t| {
@@ -127,13 +127,13 @@ async fn zingod_index_construction(run: SyncRunner) -> SyncOutcome {
             )
             .sync_budget(ZEBRA_SYNC_BUDGET)
             .indexer()
-            .follow_from(IRONWOOD_MAINNET, TRUSTED_MAINNET_P2P)
+            .follow_from(NU7_MAINNET, TRUSTED_MAINNET_P2P)
             .disk(Disk::gib(CHAIN_DISK_GIB))
             .resources(Cpu::cores(6), Mem::gib(10)),
         );
         let zingod = t.add_indexer(
             dev!(Indexer::Zingod, "../../Dockerfile", context = "../..")
-                .snapshot(IRONWOOD_MAINNET)
+                .snapshot(NU7_MAINNET)
                 .finalised_depth(FINALISED_DEPTH)
                 .fetch_concurrency(FETCH_CONCURRENCY)
                 .lsm_merge_mib_per_sec(MERGE_MIB_PER_SEC)
