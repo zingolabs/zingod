@@ -65,8 +65,10 @@ impl Default for GrpcLimits {
         }
         Self {
             max_connections: const { non_zero(4096) },
-            max_connections_per_ip: const { non_zero(32) },
-            max_streams_per_connection: const { NonZeroU32::new(8).expect("8 is non-zero") },
+            // CGNAT: many wallets behind one carrier address
+            max_connections_per_ip: const { non_zero(128) },
+            // lightwalletd's `grpc-max-concurrent-streams` (clients tuned against it)
+            max_streams_per_connection: const { NonZeroU32::new(100).expect("100 is non-zero") },
             max_work_streams: const { non_zero(2048) },
             // one mempool stream per connected wallet
             max_subscriptions: const { non_zero(4096) },

@@ -107,9 +107,10 @@ hold_goaway_delay_secs = 0
 # excess accepts closed; + 1024 must fit the open-file limit or boot fails
 max_connections = 4096
 # per client: the peer, or the address a trusted proxy's PROXY header names
-max_connections_per_ip = 32
-# HTTP/2 SETTINGS_MAX_CONCURRENT_STREAMS: every stream on one connection, of any method
-max_streams_per_connection = 8
+max_connections_per_ip = 128
+# HTTP/2 SETTINGS_MAX_CONCURRENT_STREAMS: every stream on one connection, of any method (as
+# lightwalletd's grpc-max-concurrent-streams)
+max_streams_per_connection = 100
 # work streams (every method but GetMempoolStream) across all connections; excess = UNAVAILABLE +
 # retry hint
 max_work_streams = 2048
