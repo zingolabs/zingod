@@ -33,12 +33,15 @@ let grpc = ZebraIndexerGrpcClient::new(legacy, indexer_address, tls.as_ref(), Ti
   construction failure. `EndpointError` = a bad address or TLS config, an unreadable TLS file, or
   a cookie that exists and cannot be read (a cookie not yet written is not a failure).
 - `Auth`: `Cookie` sends basic auth as `__cookie__` with the file's token, `Basic` the pair,
-  `None` no `Authorization` header. `DefaultCookie(candidates)` = the most recently written
-  candidate file present (none = no auth, same age = the earlier candidate).
+  `None` no `Authorization` header. `DefaultCookie(candidates)` sends no header until the
+  validator refuses a request without one, then the most recently written candidate file present
+  (none = no auth, same age = the earlier candidate).
 - A cookie is read on the first request, off the executor, and held. A `401` or `403` drops the
-  held cookie, so the next request reads the file again (a validator rewrites its cookie on every
-  start). An unreadable or empty cookie fails that request as `FailureMode::Auth` and is read
-  again on the next one.
+  held credentials, so the next request reads the file again (a validator rewrites its cookie on
+  every start). An unreadable or empty cookie fails that request as `FailureMode::Auth` and is
+  read again on the next one.
+- `Reach` = where an address leads: `of_validator` reads the host `validator_url` parses,
+  `of_ip` an IP. `Loopback` says where the socket connects, never who answers.
 - One attempt per call. Which validator, how many requests in flight, retries and hedges are the
   balancer's (`zingod-traffic`): this crate never re-sends, and a batch item's refusal (zebrad's
   `-1` work queue full included) is that item's own outcome.

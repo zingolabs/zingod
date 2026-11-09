@@ -23,8 +23,6 @@ pub(crate) fn default_state() -> Option<PathBuf> {
     Some(dirs::data_dir()?.join("zingod/state"))
 }
 
-/// zebrad's then zakurad's default cookie (`[rpc] cookie_dir` = `<cache dir>/<validator>`), both
-/// rewritten on every validator start
 pub(crate) fn default_validator_cookies() -> Vec<PathBuf> {
     let cookies = |cache: PathBuf| ["zebra", "zakura"].map(|dir| cache.join(dir).join(".cookie"));
     dirs::cache_dir().map(cookies).map(Vec::from).unwrap_or_default()

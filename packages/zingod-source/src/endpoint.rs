@@ -4,6 +4,7 @@
 //! - no probe: reachability = the caller's retry loop (validator down at boot ≠ fatal)
 
 use std::io::Read as _;
+use std::net::IpAddr;
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
@@ -35,8 +36,6 @@ pub struct Endpoint {
 }
 
 /// Credentials a validator expects
-///
-/// - `DefaultCookie` = each validator's default cookie file, whichever exists (none = no auth)
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Auth {
     None,
@@ -45,7 +44,23 @@ pub enum Auth {
     Basic { user: String, password: String },
 }
 
-pub(crate) type Credentials = Option<(String, String)>;
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Credentials {
+    NoAuth,
+    Basic { user: String, password: String },
+}
+
+impl Credentials {
+    pub(crate) fn basic(user: &str, password: &str) -> Self {
+        Self::Basic { user: user.to_owned(), password: password.to_owned() }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Held {
+    Unread,
+    Known(Credentials),
+}
 
 struct Cookie {
     modified: Option<SystemTime>,
@@ -74,7 +89,25 @@ impl Auth {
 
     /// - reads each cookie file on the calling thread
     pub(crate) fn startable(&self) -> Result<(), EndpointError> {
-        start_verdict(self.sent(read_cookies(self.cookie_paths())))
+        match self.before_challenge() {
+            Held::Known(_) => Ok(()),
+            Held::Unread => start_verdict(self.sent(read_cookies(self.cookie_paths()))),
+        }
+    }
+
+    pub(crate) fn before_challenge(&self) -> Held {
+        match self {
+            Self::DefaultCookie(_) => Held::Known(Credentials::NoAuth),
+            fixed_or_explicit => fixed_or_explicit.fixed().map_or(Held::Unread, Held::Known),
+        }
+    }
+
+    fn fixed(&self) -> Option<Credentials> {
+        match self {
+            Self::None => Some(Credentials::NoAuth),
+            Self::Basic { user, password } => Some(Credentials::basic(user, password)),
+            Self::Cookie(_) | Self::DefaultCookie(_) => None,
+        }
     }
 
     fn cookie_paths(&self) -> &[PathBuf] {
@@ -86,12 +119,10 @@ impl Auth {
     }
 
     fn sent(&self, readings: Vec<Reading>) -> Result<Credentials, EndpointError> {
-        let absent_is_no_auth = match self {
-            Self::None => return Ok(None),
-            Self::Basic { user, password } => return Ok(Some((user.clone(), password.clone()))),
-            Self::Cookie(_) => false,
-            Self::DefaultCookie(_) => true,
-        };
+        if let Some(fixed) = self.fixed() {
+            return Ok(fixed);
+        }
+        let absent_is_no_auth = matches!(self, Self::DefaultCookie(_));
         let present = readings
             .into_iter()
             .filter(|(_, cookie)| !(absent_is_no_auth && cookie.as_ref().is_err_and(absent)))
@@ -103,7 +134,7 @@ impl Auth {
             })
             .collect::<Result<Vec<_>, _>>()?;
         let newest = present.into_iter().rev().max_by_key(|(_, cookie)| cookie.modified);
-        newest.map(|(path, cookie)| basic_auth(&path, &cookie)).transpose()
+        newest.map_or(Ok(Credentials::NoAuth), |(path, cookie)| basic_auth(&path, &cookie))
     }
 }
 
@@ -111,13 +142,13 @@ fn absent(error: &std::io::Error) -> bool {
     error.kind() == std::io::ErrorKind::NotFound
 }
 
-fn basic_auth(path: &Path, cookie: &Cookie) -> Result<(String, String), EndpointError> {
+fn basic_auth(path: &Path, cookie: &Cookie) -> Result<Credentials, EndpointError> {
     let token = cookie.contents.trim();
     let token = token.strip_prefix("__cookie__:").unwrap_or(token);
     if token.is_empty() {
         return Err(EndpointError::EmptyCookie { path: path.display().to_string() });
     }
-    Ok(("__cookie__".to_string(), token.to_string()))
+    Ok(Credentials::basic("__cookie__", token))
 }
 
 fn start_verdict(read: Result<Credentials, EndpointError>) -> Result<(), EndpointError> {
@@ -176,6 +207,10 @@ impl Default for LinkLimits {
 /// `http://{address}`, hostname kept, not pre-resolved (reqwest resolves per connection →
 /// follows a validator whose IP changes, e.g. a restarted pod)
 pub(crate) fn validator_url(address: &str) -> Result<String, EndpointError> {
+    Ok(parsed(address)?.as_str().trim_end_matches('/').to_string())
+}
+
+fn parsed(address: &str) -> Result<reqwest::Url, EndpointError> {
     let invalid = |reason: &str| EndpointError::Address {
         address: address.to_string(),
         reason: reason.to_string(),
@@ -189,7 +224,37 @@ pub(crate) fn validator_url(address: &str) -> Result<String, EndpointError> {
     if url.path() != "/" || url.query().is_some() {
         return Err(invalid("unexpected path or query"));
     }
-    Ok(url.as_str().trim_end_matches('/').to_string())
+    Ok(url)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reach {
+    Loopback,
+    Private,
+    Public,
+    Named,
+}
+
+impl Reach {
+    pub fn of_ip(ip: IpAddr) -> Self {
+        match ip.to_canonical() {
+            ip if ip.is_loopback() => Self::Loopback,
+            IpAddr::V4(ip) if ip.is_private() => Self::Private,
+            IpAddr::V6(ip) if ip.is_unique_local() => Self::Private,
+            _ => Self::Public,
+        }
+    }
+
+    pub fn of_validator(address: &str) -> Result<Self, EndpointError> {
+        let url = parsed(address)?;
+        let host = url.host_str().unwrap_or_default();
+        let host = host.trim_start_matches('[').trim_end_matches(']');
+        let named = || match host.trim_end_matches('.') {
+            "localhost" => Self::Loopback,
+            _ => Self::Named,
+        };
+        Ok(host.parse().map_or_else(|_| named(), Self::of_ip))
+    }
 }
 
 #[cfg(test)]
@@ -205,10 +270,14 @@ mod tests {
         Err(std::io::Error::from(kind))
     }
 
+    fn basic() -> Auth {
+        Auth::Basic { user: "user".to_owned(), password: "pass".to_owned() }
+    }
+
     fn outcome(sent: Result<Credentials, EndpointError>) -> String {
         match sent {
-            Ok(None) => "no auth".to_owned(),
-            Ok(Some((user, token))) => format!("{user}:{token}"),
+            Ok(Credentials::NoAuth) => "no auth".to_owned(),
+            Ok(Credentials::Basic { user, password }) => format!("{user}:{password}"),
             Err(EndpointError::Cookie { path, .. }) => format!("unreadable {path}"),
             Err(EndpointError::EmptyCookie { path }) => format!("empty {path}"),
             Err(other) => format!("{other}"),
@@ -240,6 +309,50 @@ mod tests {
     }
 
     #[test]
+    fn only_an_explicit_cookie_is_unknown_before_the_first_request() {
+        let cases = [
+            ("none: no auth", Auth::None, Held::Known(Credentials::NoAuth)),
+            ("basic: the pair", basic(), Held::Known(Credentials::basic("user", "pass"))),
+            ("explicit cookie: to be read", Auth::Cookie("zebra".into()), Held::Unread),
+            (
+                "default cookie: no auth until refused",
+                Auth::DefaultCookie(vec![]),
+                Held::Known(Credentials::NoAuth),
+            ),
+        ];
+        for (case, auth, expected) in cases {
+            assert_eq!(auth.before_challenge(), expected, "{case}");
+        }
+    }
+
+    #[test]
+    fn a_validator_address_reaches_what_its_parsed_host_names() {
+        #[rustfmt::skip]
+        let cases = [
+            ("127.0.0.1:8232",            Reach::Loopback),
+            ("127.1:8232",                Reach::Loopback),
+            ("user@127.0.0.1:8232",       Reach::Loopback),
+            ("[::1]:8232",                Reach::Loopback),
+            ("[::ffff:127.0.0.1]:8232",   Reach::Loopback),
+            ("localhost:8232",            Reach::Loopback),
+            ("LOCALHOST.:8232",           Reach::Loopback),
+            ("10.0.0.5:8232",             Reach::Private),
+            ("192.168.1.9:8232",          Reach::Private),
+            ("[fd00::1]:8232",            Reach::Private),
+            ("8.8.8.8:8232",              Reach::Public),
+            ("[2001:4860::8888]:8232",    Reach::Public),
+            ("zebra-eu:8232",             Reach::Named),
+            ("localhost.example:8232",    Reach::Named),
+        ];
+        for (address, expected) in cases {
+            let reach = Reach::of_validator(address).map_err(|error| error.to_string());
+            assert_eq!(reach, Ok(expected), "{address}");
+        }
+        let unparsed = Reach::of_validator("zebrad");
+        assert!(matches!(unparsed, Err(EndpointError::Address { .. })), "no port: {unparsed:?}");
+    }
+
+    #[test]
     fn only_a_cookie_that_can_never_be_read_refuses_the_start() {
         use std::io::ErrorKind::{IsADirectory, NotFound, PermissionDenied};
         let unreadable = |kind| {
@@ -247,8 +360,8 @@ mod tests {
             Err(EndpointError::Cookie { path: "zebra".to_owned(), source })
         };
         let cases = [
-            ("no auth", Ok(None), true),
-            ("a cookie", Ok(Some(("__cookie__".to_owned(), "one".to_owned()))), true),
+            ("no auth", Ok(Credentials::NoAuth), true),
+            ("a cookie", Ok(Credentials::basic("__cookie__", "one")), true),
             ("not yet written", unreadable(NotFound), true),
             (
                 "caught mid-write",
