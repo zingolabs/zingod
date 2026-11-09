@@ -3,9 +3,10 @@
 //!
 //! - no probe: reachability = the caller's retry loop (validator down at boot ≠ fatal)
 
+use std::io::Read as _;
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use crate::ResponseSizeCap;
 
@@ -17,8 +18,8 @@ pub enum EndpointError {
     #[error("cannot read validator cookie {path}: {source}")]
     Cookie { path: String, source: std::io::Error },
 
-    #[error("validator cookies at both {0} and {1}: set this validator's cookie_path")]
-    AmbiguousCookie(String, String),
+    #[error("validator cookie {path} is empty")]
+    EmptyCookie { path: String },
 
     #[error("cannot read indexer TLS {role} {path}: {source}")]
     TlsFile { role: &'static str, path: String, source: std::io::Error },
@@ -44,37 +45,101 @@ pub enum Auth {
     Basic { user: String, password: String },
 }
 
+pub(crate) type Credentials = Option<(String, String)>;
+
+struct Cookie {
+    modified: Option<SystemTime>,
+    contents: String,
+}
+
+type Reading = (PathBuf, std::io::Result<Cookie>);
+
 impl Auth {
-    /// Basic-auth pair sent (`None` = no auth), read per request (a validator restart rewrites
-    /// its cookie)
-    ///
-    /// - `__cookie__:` prefix stripped if present (older validators, some packagers omit it)
-    pub(crate) fn credentials(&self) -> Result<Option<(String, String)>, EndpointError> {
-        match self {
-            Self::None => Ok(None),
-            Self::Basic { user, password } => Ok(Some((user.clone(), password.clone()))),
-            Self::Cookie(path) => cookie(path).map(Some),
-            Self::DefaultCookie(candidates) => {
-                let mut present = candidates.iter().filter(|path| path.exists());
-                match (present.next(), present.next()) {
-                    (None, _) => Ok(None),
-                    (Some(path), None) => cookie(path).map(Some),
-                    (Some(first), Some(second)) => Err(EndpointError::AmbiguousCookie(
-                        first.display().to_string(),
-                        second.display().to_string(),
-                    )),
-                }
-            }
+    /// - reads each cookie file on the blocking pool
+    pub(crate) async fn credentials(&self) -> Result<Credentials, EndpointError> {
+        let paths = self.cookie_paths().to_vec();
+        if paths.is_empty() {
+            return self.sent(Vec::new());
         }
+        let read = tokio::task::spawn_blocking({
+            let paths = paths.clone();
+            move || read_cookies(&paths)
+        });
+        let unread = |stopped: tokio::task::JoinError| {
+            let reading = |path| (path, Err(std::io::Error::other(stopped.to_string())));
+            paths.into_iter().map(reading).collect()
+        };
+        self.sent(read.await.unwrap_or_else(unread))
+    }
+
+    /// - reads each cookie file on the calling thread
+    pub(crate) fn startable(&self) -> Result<(), EndpointError> {
+        start_verdict(self.sent(read_cookies(self.cookie_paths())))
+    }
+
+    fn cookie_paths(&self) -> &[PathBuf] {
+        match self {
+            Self::None | Self::Basic { .. } => &[],
+            Self::Cookie(path) => std::slice::from_ref(path),
+            Self::DefaultCookie(candidates) => candidates,
+        }
+    }
+
+    fn sent(&self, readings: Vec<Reading>) -> Result<Credentials, EndpointError> {
+        let absent_is_no_auth = match self {
+            Self::None => return Ok(None),
+            Self::Basic { user, password } => return Ok(Some((user.clone(), password.clone()))),
+            Self::Cookie(_) => false,
+            Self::DefaultCookie(_) => true,
+        };
+        let present = readings
+            .into_iter()
+            .filter(|(_, cookie)| !(absent_is_no_auth && cookie.as_ref().is_err_and(absent)))
+            .map(|(path, cookie)| match cookie {
+                Ok(cookie) => Ok((path, cookie)),
+                Err(source) => {
+                    Err(EndpointError::Cookie { path: path.display().to_string(), source })
+                }
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let newest = present.into_iter().rev().max_by_key(|(_, cookie)| cookie.modified);
+        newest.map(|(path, cookie)| basic_auth(&path, &cookie)).transpose()
     }
 }
 
-fn cookie(path: &Path) -> Result<(String, String), EndpointError> {
-    let contents = std::fs::read_to_string(path)
-        .map_err(|source| EndpointError::Cookie { path: path.display().to_string(), source })?;
-    let token = contents.trim();
+fn absent(error: &std::io::Error) -> bool {
+    error.kind() == std::io::ErrorKind::NotFound
+}
+
+fn basic_auth(path: &Path, cookie: &Cookie) -> Result<(String, String), EndpointError> {
+    let token = cookie.contents.trim();
     let token = token.strip_prefix("__cookie__:").unwrap_or(token);
+    if token.is_empty() {
+        return Err(EndpointError::EmptyCookie { path: path.display().to_string() });
+    }
     Ok(("__cookie__".to_string(), token.to_string()))
+}
+
+fn start_verdict(read: Result<Credentials, EndpointError>) -> Result<(), EndpointError> {
+    match read {
+        Err(EndpointError::Cookie { source, .. }) if absent(&source) => Ok(()),
+        Err(EndpointError::EmptyCookie { .. }) => Ok(()),
+        settled => settled.map(drop),
+    }
+}
+
+/// - reads each of `paths`
+fn read_cookies(paths: &[PathBuf]) -> Vec<Reading> {
+    paths.iter().map(|path| (path.clone(), read_cookie(path))).collect()
+}
+
+/// - reads `path`
+fn read_cookie(path: &Path) -> std::io::Result<Cookie> {
+    let mut file = std::fs::File::open(path)?;
+    let modified = file.metadata()?.modified().ok();
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)?;
+    Ok(Cookie { modified, contents })
 }
 
 /// - `read` = silence, never total duration (multi-MB block over a slow link must finish)
@@ -131,35 +196,98 @@ pub(crate) fn validator_url(address: &str) -> Result<String, EndpointError> {
 mod tests {
     use super::*;
 
-    /// - user always `__cookie__`, token trimmed with or without its prefix (packagers write both)
-    /// - each call reads the file: a validator restart's new cookie is the next one sent
+    fn written(contents: &str, age_secs: u64) -> std::io::Result<Cookie> {
+        let modified = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000 - age_secs);
+        Ok(Cookie { modified: Some(modified), contents: contents.to_owned() })
+    }
+
+    fn failed(kind: std::io::ErrorKind) -> std::io::Result<Cookie> {
+        Err(std::io::Error::from(kind))
+    }
+
+    fn outcome(sent: Result<Credentials, EndpointError>) -> String {
+        match sent {
+            Ok(None) => "no auth".to_owned(),
+            Ok(Some((user, token))) => format!("{user}:{token}"),
+            Err(EndpointError::Cookie { path, .. }) => format!("unreadable {path}"),
+            Err(EndpointError::EmptyCookie { path }) => format!("empty {path}"),
+            Err(other) => format!("{other}"),
+        }
+    }
+
     #[test]
-    fn cookie_credentials_follow_the_files_on_disk() {
-        let dir = tempfile::tempdir().expect("temp dir");
-        let (zebra, zakura) = (dir.path().join("zebra.cookie"), dir.path().join("zakura.cookie"));
-        let sent = |auth: &Auth| auth.credentials().map(|pair| pair.map(|(_, token)| token));
-        let explicit = Auth::Cookie(zebra.clone());
+    fn credentials_sent_follow_the_cookies_read() {
+        use std::io::ErrorKind::{NotFound, PermissionDenied};
+        let explicit = Auth::Cookie("zebra".into());
+        let default = Auth::DefaultCookie(vec!["zebra".into(), "zakura".into()]);
+        let basic = Auth::Basic { user: "user".to_owned(), password: "pass".to_owned() };
+        #[rustfmt::skip]
+        let cases = [
+            ("none",                         &Auth::None, vec![],                                              "no auth"),
+            ("basic",                        &basic,      vec![],                                              "user:pass"),
+            ("explicit, prefixed",           &explicit,   vec![written("__cookie__:one", 0)],                  "__cookie__:one"),
+            ("explicit, bare and untrimmed", &explicit,   vec![written("  one  \n", 0)],                       "__cookie__:one"),
+            ("explicit, absent",             &explicit,   vec![failed(NotFound)],                              "unreadable zebra"),
+            ("explicit, unreadable",         &explicit,   vec![failed(PermissionDenied)],                      "unreadable zebra"),
+            ("explicit, empty",              &explicit,   vec![written("", 0)],                                "empty zebra"),
+            ("explicit, prefix alone",       &explicit,   vec![written("__cookie__:\n", 0)],                   "empty zebra"),
+            ("default, neither",             &default,    vec![failed(NotFound), failed(NotFound)],            "no auth"),
+            ("default, zebra alone",         &default,    vec![written("one", 0), failed(NotFound)],           "__cookie__:one"),
+            ("default, zakura alone",        &default,    vec![failed(NotFound), written("two", 0)],           "__cookie__:two"),
+            ("default, zakura newer",        &default,    vec![written("one", 9), written("two", 0)],          "__cookie__:two"),
+            ("default, zebra newer",         &default,    vec![written("one", 0), written("two", 9)],          "__cookie__:one"),
+            ("default, same age: the first", &default,    vec![written("one", 5), written("two", 5)],          "__cookie__:one"),
+            ("default, one unreadable",      &default,    vec![written("one", 0), failed(PermissionDenied)],   "unreadable zakura"),
+            ("default, the newest empty",    &default,    vec![written("one", 9), written("", 0)],             "empty zakura"),
+        ];
+        for (case, auth, cookies, expected) in cases {
+            let readings = auth.cookie_paths().iter().cloned().zip(cookies).collect();
+            assert_eq!(outcome(auth.sent(readings)), expected, "{case}");
+        }
+    }
+
+    #[test]
+    fn only_a_cookie_that_can_never_be_read_refuses_the_start() {
+        use std::io::ErrorKind::{IsADirectory, NotFound, PermissionDenied};
+        let unreadable = |kind| {
+            let source = std::io::Error::from(kind);
+            Err(EndpointError::Cookie { path: "zebra".to_owned(), source })
+        };
+        let cases = [
+            ("no auth", Ok(None), true),
+            ("a cookie", Ok(Some(("__cookie__".to_owned(), "one".to_owned()))), true),
+            ("not yet written", unreadable(NotFound), true),
+            (
+                "caught mid-write",
+                Err(EndpointError::EmptyCookie { path: "zebra".to_owned() }),
+                true,
+            ),
+            ("another user's", unreadable(PermissionDenied), false),
+            ("a directory", unreadable(IsADirectory), false),
+        ];
+        for (case, read, starts) in cases {
+            assert_eq!(start_verdict(read).is_ok(), starts, "{case}");
+        }
+    }
+
+    #[tokio::test]
+    async fn the_newer_default_cookie_on_disk_is_the_one_sent() {
+        let dir = tempfile::tempdir().expect("the OS temp directory is writable");
+        let [zebra, zakura] = ["zebra.cookie", "zakura.cookie"].map(|name| dir.path().join(name));
         let default = Auth::DefaultCookie(vec![zebra.clone(), zakura.clone()]);
+        let started = |cookie: &Path, token: &str, at_secs: u64| {
+            std::fs::write(cookie, token)?;
+            let at = SystemTime::UNIX_EPOCH + Duration::from_secs(at_secs);
+            std::fs::File::options().write(true).open(cookie)?.set_modified(at)
+        };
 
-        let missing = explicit.credentials();
-        assert!(
-            matches!(missing, Err(EndpointError::Cookie { .. })),
-            "explicit, absent: {missing:?}"
-        );
-        assert_eq!(sent(&default).ok(), Some(None), "default, neither present: no auth");
-
-        std::fs::write(&zebra, "__cookie__:first").expect("validator start");
-        let user = explicit.credentials().ok().flatten().map(|(user, _)| user);
-        assert_eq!(user.as_deref(), Some("__cookie__"), "cookie user");
-        assert_eq!(sent(&explicit).ok(), Some(Some("first".into())), "explicit, prefixed");
-        assert_eq!(sent(&default).ok(), Some(Some("first".into())), "default, one present");
-
-        std::fs::write(&zebra, "  second  \n").expect("validator restart");
-        assert_eq!(sent(&explicit).ok(), Some(Some("second".into())), "re-read, bare + trimmed");
-
-        std::fs::write(&zakura, "__cookie__:other").expect("second validator");
-        let both = default.credentials();
-        assert!(matches!(both, Err(EndpointError::AmbiguousCookie(..))), "default, both: {both:?}");
+        assert_eq!(outcome(default.credentials().await), "no auth", "neither started");
+        started(&zebra, "__cookie__:one", 100).expect("the temp directory is writable");
+        assert_eq!(outcome(default.credentials().await), "__cookie__:one", "zebrad started");
+        started(&zakura, "__cookie__:two", 200).expect("the temp directory is writable");
+        assert_eq!(outcome(default.credentials().await), "__cookie__:two", "zakurad started later");
+        started(&zebra, "__cookie__:three", 300).expect("the temp directory is writable");
+        assert_eq!(outcome(default.credentials().await), "__cookie__:three", "zebrad restarted");
     }
 
     #[test]
