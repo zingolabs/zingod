@@ -31,9 +31,8 @@ A PR without a change file fails its check.
 Approval commits, tags, and publishes the GitHub release and the image. Nothing is pushed to
 `main` by hand.
 
-- For a pre-release, set `prerelease_label` to `rc`: `1.0.0-rc.1`, then `-rc.2`. The change files
-  stay until the stable release.
-- For 1.0.0 only, set `override_version` to `1.0.0`.
+Don't merge to `main` while a release waits. If something does merge, Publish pushes nothing and
+fails: dispatch again.
 
 ## Patch release
 
