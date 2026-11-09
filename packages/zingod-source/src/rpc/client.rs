@@ -13,7 +13,7 @@ use zingod_primitives::protocol::MAX_BLOCK_BYTES;
 
 use super::envelope;
 use super::error::RpcError;
-use crate::endpoint::Credentials;
+use crate::endpoint::{Credentials, Held};
 use crate::metrics;
 use crate::{Auth, LinkLimits, Timeouts};
 
@@ -80,7 +80,7 @@ enum Wire {
         client: reqwest::Client,
         url: String,
         auth: Auth,
-        held: Mutex<Option<Credentials>>,
+        held: Mutex<Held>,
     },
     /// In-process server: the same bytes, no socket (paused-clock tests)
     #[cfg(any(test, feature = "testing"))]
@@ -107,7 +107,7 @@ impl RpcClient {
             )
             .build()
             .expect("reqwest without TLS features + no fallible builder option = infallible build");
-        let held = Mutex::new(None);
+        let held = Mutex::new(config.auth.before_challenge());
         let wire = Wire::Http { client, url: config.url, auth: config.auth, held };
         Self::over(config.name, wire, limits)
     }
@@ -173,26 +173,26 @@ impl RpcClient {
             }
         };
         let lock = || held.lock().unwrap_or_else(PoisonError::into_inner);
-        let known = lock().clone();
-        let credentials = match known {
-            Some(credentials) => credentials,
-            None => {
+        let held_now = lock().clone();
+        let credentials = match held_now {
+            Held::Known(credentials) => credentials,
+            Held::Unread => {
                 let read = auth.credentials().await?;
-                *lock() = Some(read.clone());
+                *lock() = Held::Known(read.clone());
                 read
             }
         };
         let mut request =
             client.post(url).header("Content-Type", "application/json").body(body.to_string());
-        if let Some((user, pass)) = &credentials {
-            request = request.basic_auth(user, Some(pass));
+        if let Credentials::Basic { user, password } = &credentials {
+            request = request.basic_auth(user, Some(password));
         }
 
         let response = request.send().await?;
         let status = response.status().as_u16();
         {
             let mut held = lock();
-            *held = held_after(held.take(), &credentials, status);
+            *held = held_after(std::mem::replace(&mut *held, Held::Unread), &credentials, status);
         }
         if !(200..300).contains(&status) {
             return Err(RpcError::Status(status));
@@ -235,9 +235,11 @@ impl RpcClient {
     }
 }
 
-fn held_after(held: Option<Credentials>, sent: &Credentials, status: u16) -> Option<Credentials> {
-    let refused = matches!(status, 401 | 403);
-    held.filter(|held| !(refused && held == sent))
+fn held_after(held: Held, sent: &Credentials, status: u16) -> Held {
+    match held {
+        Held::Known(refused) if matches!(status, 401 | 403) && refused == *sent => Held::Unread,
+        kept => kept,
+    }
 }
 
 fn rpc_failure<T>(settled: &Result<T, RpcError>) -> Option<crate::FailureMode> {
@@ -246,6 +248,7 @@ fn rpc_failure<T>(settled: &Result<T, RpcError>) -> Option<crate::FailureMode> {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
     use std::sync::atomic::AtomicUsize;
     use std::sync::Arc;
     use std::time::Duration;
@@ -265,21 +268,36 @@ mod tests {
     async fn validator_answering(
         answer: fn(&Value) -> Value,
     ) -> (String, JoinHandle<(Value, bool)>) {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind");
-        let url = format!("http://{}", listener.local_addr().expect("bound"));
+        let (listener, url) = loopback().await;
         let exchange = tokio::spawn(async move {
             let (mut stream, _) = listener.accept().await.expect("accept");
             let (_, body) = request(&mut stream).await;
-            let reply = answer(&body).to_string();
-            let response = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{reply}",
-                reply.len()
-            );
-            stream.write_all(response.as_bytes()).await.expect("write");
+            let reply = answered(&answer(&body));
+            stream
+                .write_all(reply.as_bytes())
+                .await
+                .expect("the client waits for its reply before it closes");
             let resent = tokio::time::timeout(RESEND_WINDOW, listener.accept()).await.is_ok();
             (body, resent)
         });
         (url, exchange)
+    }
+
+    /// - binds a loopback listener on a free port
+    async fn loopback() -> (tokio::net::TcpListener, String) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("loopback has a free ephemeral port");
+        let address = listener.local_addr().expect("a bound listener has a local address");
+        (listener, format!("http://{address}"))
+    }
+
+    fn answered(reply: &Value) -> String {
+        let reply = reply.to_string();
+        format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{reply}",
+            reply.len()
+        )
     }
 
     /// - reads `stream` until one request's head and whole body arrived
@@ -325,24 +343,39 @@ mod tests {
 
     #[test]
     fn held_credentials_are_dropped_only_when_the_validator_refuses_them() {
-        let token = |token: &str| Some(("__cookie__".to_owned(), token.to_owned()));
+        let token = |token: &str| Credentials::basic("__cookie__", token);
+        let known = |token: &str| Held::Known(Credentials::basic("__cookie__", token));
+        let bare = Held::Known(Credentials::NoAuth);
         #[rustfmt::skip]
         let cases = [
-            ("answered",                     Some(token("new")), token("new"), 200, Some(token("new"))),
-            ("server error",                 Some(token("new")), token("new"), 503, Some(token("new"))),
-            ("refused",                      Some(token("old")), token("old"), 401, None),
-            ("forbidden",                    Some(token("old")), token("old"), 403, None),
-            ("no auth refused",              Some(None),         None,         401, None),
-            ("refused, already read again",  Some(token("new")), token("old"), 401, Some(token("new"))),
-            ("refused, already dropped",     None,               token("old"), 401, None),
+            ("answered",                    known("new"), token("new"),        200, known("new")),
+            ("server error",                known("new"), token("new"),        503, known("new")),
+            ("refused",                     known("old"), token("old"),        401, Held::Unread),
+            ("forbidden",                   known("old"), token("old"),        403, Held::Unread),
+            ("no auth refused",             bare,         Credentials::NoAuth, 401, Held::Unread),
+            ("refused, already read again", known("new"), token("old"),        401, known("new")),
+            ("refused, already dropped",    Held::Unread, token("old"),        401, Held::Unread),
         ];
         for (case, held, sent, status, expected) in cases {
             assert_eq!(held_after(held, &sent, status), expected, "{case}");
         }
     }
 
-    fn pong(call: &Value) -> Value {
-        json!({ "id": call["id"], "result": "pong" })
+    fn cookie_dir() -> tempfile::TempDir {
+        tempfile::tempdir().expect("the OS temp directory is writable")
+    }
+
+    /// - writes `contents` to `cookie`
+    fn start(cookie: &Path, contents: &str) {
+        std::fs::write(cookie, contents).expect("the temp directory is writable");
+    }
+
+    async fn ping(client: &RpcClient) -> Result<String, String> {
+        client.call("ping", vec![]).await.map_err(|error| error.to_string())
+    }
+
+    fn refused() -> Result<String, String> {
+        Err(RpcError::Status(401).to_string())
     }
 
     fn basic(token: &str) -> String {
@@ -356,29 +389,22 @@ mod tests {
     }
 
     /// - spawns a loopback listener that answers every connection until the runtime stops
-    async fn validator_requiring(tokens: [&'static str; 2], starts: Arc<AtomicUsize>) -> String {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("loopback has a free ephemeral port");
-        let url = format!(
-            "http://{}",
-            listener.local_addr().expect("a bound listener has a local address")
-        );
+    async fn validator_demanding(
+        tokens: [Option<&'static str>; 2],
+        starts: Arc<AtomicUsize>,
+    ) -> String {
+        let (listener, url) = loopback().await;
         tokio::spawn(async move {
             while let Ok((mut stream, _)) = listener.accept().await {
                 let (head, body) = request(&mut stream).await;
-                let accepted = basic(tokens[starts.load(Ordering::Relaxed)]);
-                let authorized = head.lines().any(|line| {
-                    line.split_once(": ").is_some_and(|(name, value)| {
-                        name.eq_ignore_ascii_case("authorization") && value == accepted
-                    })
+                let sent = head.lines().find_map(|line| {
+                    let (name, value) = line.split_once(": ")?;
+                    name.eq_ignore_ascii_case("authorization").then(|| value.to_owned())
                 });
-                let response = if authorized {
-                    let reply = pong(&body).to_string();
-                    format!(
-                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{reply}",
-                        reply.len()
-                    )
+                let demanded = tokens[starts.load(Ordering::Relaxed)].map(basic);
+                let response = if demanded.is_none() || demanded == sent {
+                    let sent = sent.as_deref().unwrap_or("none");
+                    answered(&json!({ "id": body["id"], "result": sent }))
                 } else {
                     "HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
                         .to_owned()
@@ -393,26 +419,37 @@ mod tests {
 
     #[tokio::test]
     async fn a_cookie_is_read_once_then_again_only_after_the_validator_refuses_it() {
-        let dir = tempfile::tempdir().expect("the OS temp directory is writable");
+        let dir = cookie_dir();
         let cookie = dir.path().join("cookie");
         let starts = Arc::new(AtomicUsize::new(0));
-        let url = validator_requiring(["first", "second"], starts.clone()).await;
+        let url = validator_demanding([Some("first"), Some("second")], starts.clone()).await;
         let client = client_with("restarting", url, Auth::Cookie(cookie.clone()));
-        let ping = || async {
-            let call = client.call::<String>("ping", vec![]).await;
-            call.map_err(|error| error.to_string())
-        };
-        let pong = Ok("pong".to_owned());
 
-        std::fs::write(&cookie, "__cookie__:first").expect("the temp directory is writable");
-        assert_eq!(ping().await, pong, "first request: cookie read");
+        start(&cookie, "__cookie__:first");
+        assert_eq!(ping(&client).await, Ok(basic("first")), "first request: cookie read");
         std::fs::remove_file(&cookie).expect("the cookie written above is still there");
-        assert_eq!(ping().await, pong, "cookie file gone: not read again");
+        assert_eq!(ping(&client).await, Ok(basic("first")), "cookie file gone: not read again");
 
         starts.store(1, Ordering::Relaxed);
-        std::fs::write(&cookie, "__cookie__:second").expect("the temp directory is writable");
-        assert_eq!(ping().await, Err(RpcError::Status(401).to_string()), "restart: old cookie");
-        assert_eq!(ping().await, pong, "after the refusal: cookie read again");
+        start(&cookie, "__cookie__:second");
+        assert_eq!(ping(&client).await, refused(), "restart: old cookie");
+        assert_eq!(ping(&client).await, Ok(basic("second")), "after the refusal: read again");
+    }
+
+    #[tokio::test]
+    async fn a_default_cookie_is_sent_only_after_a_bare_request_is_refused() {
+        let dir = cookie_dir();
+        let candidates = ["zebra.cookie", "zakura.cookie"].map(|name| dir.path().join(name));
+        start(&candidates[1], "__cookie__:local");
+        let starts = Arc::new(AtomicUsize::new(0));
+        let url = validator_demanding([None, Some("local")], starts.clone()).await;
+        let client = client_with("challenging", url, Auth::DefaultCookie(candidates.to_vec()));
+
+        assert_eq!(ping(&client).await, Ok("none".to_owned()), "nothing demanded: no cookie");
+
+        starts.store(1, Ordering::Relaxed);
+        assert_eq!(ping(&client).await, refused(), "demanded: the bare request");
+        assert_eq!(ping(&client).await, Ok(basic("local")), "after the refusal: the cookie");
     }
 
     /// Batch replies reversed by the validator: outcomes still in call order, `-1` busy = that

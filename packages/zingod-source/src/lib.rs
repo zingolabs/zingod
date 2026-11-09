@@ -33,7 +33,7 @@ pub use decode::{
     decode_block, decode_prepared, decode_transaction, mined_transaction, prepare_transaction,
     DecodeError, Prepared,
 };
-pub use endpoint::{Auth, Endpoint, EndpointError, LinkLimits, Timeouts};
+pub use endpoint::{Auth, Endpoint, EndpointError, LinkLimits, Reach, Timeouts};
 pub use error::{FailureMode, NonDomainError, QueryError};
 pub use indexer_client::ZebraIndexerGrpcClient;
 pub use indexer_endpoint::ZebraIndexerTls;

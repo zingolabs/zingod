@@ -27,8 +27,8 @@ network = "testnet"
 # - down at boot or later = retried, never fatal
 [[trusted_validators]]
 jsonrpc_address = "127.0.0.1:18232"
-# No credentials + a loopback address = the validator's default cookie, read again when refused:
-# <cache dir>/zebra/.cookie or <cache dir>/zakura/.cookie (both present = the one written last)
+# No credentials + a loopback address = no auth until the validator refuses, then its default
+# cookie: <cache dir>/zebra/.cookie or <cache dir>/zakura/.cookie (both = the one written last)
 # cookie_path = "<PATH_TO_ZEBRA>/.cookie"
 # basic auth
 # user = "xxxxxx"
