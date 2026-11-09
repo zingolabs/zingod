@@ -2,8 +2,8 @@
 
 `zingod` serves the lightwalletd-compatible `CompactTxStreamer` gRPC service defined by the
 [LightWallet Protocol](https://github.com/zcash/lightwallet-protocol/blob/main/walletrpc/service.proto)
-on `serve.grpc_listen_address` (default `127.0.0.1:8137`), HTTP/2 over TLS (a self-signed pair
-by default; [Network exposure](running.md#network-exposure)). Zingod serves no JSON-RPC: node queries go to the validator's own.
+on `serve.grpc_listen_address` (default `127.0.0.1:8137`), HTTP/2, in plaintext on loopback
+unless `serve.tls` sets TLS ([Network exposure](running.md#network-exposure)). Zingod serves no JSON-RPC: node queries go to the validator's own.
 
 ## Where each method is answered
 

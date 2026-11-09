@@ -14,7 +14,7 @@ use std::process::ExitCode;
 use std::time::Duration;
 
 use zingod_chainview::SubmitPolicy;
-use zingod_grpc::{GrpcLimits, TlsFiles};
+use zingod_grpc::GrpcLimits;
 use zingod_peers::PeerConfig;
 
 use serde::{Deserialize, Serialize};
@@ -341,9 +341,8 @@ pub(crate) struct ServeTable {
     pub(crate) grpc_listen_address: SocketAddr,
     /// Across one request's addresses, whole history (over = `RESOURCE_EXHAUSTED`, never partial)
     max_address_rows: NonZeroUsize,
-    /// Absent = self-signed pair under `state_dir/tls`; both paths "plaintext" = no TLS
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) tls: Option<TlsFiles>,
+    tls: Option<serve_tls::TlsSetting>,
     /// Kept across restarts (`zingod hold` writes its marker here)
     pub(crate) state_dir: Option<PathBuf>,
     /// >= load balancer's mark-down time + DNS TTL
@@ -364,12 +363,12 @@ impl Default for ServeTable {
 }
 
 impl ServeTable {
-    /// `Err` = unset `state_dir` with no home dir
+    /// `Err` = unset `state_dir` with no home dir, or `tls` ([`serve_tls::resolve`])
     fn resolve(self) -> Result<ServeConfig, IndexerError> {
         let Self { grpc_listen_address, max_address_rows, tls, state_dir, hold_goaway_delay } =
             self;
         let state_dir = resolved_path(state_dir, "serve.state_dir", paths::default_state)?;
-        let tls = serve_tls::resolve(tls)?;
+        let tls = serve_tls::resolve(tls, grpc_listen_address)?;
         Ok(ServeConfig { grpc_listen_address, max_address_rows, tls, state_dir, hold_goaway_delay })
     }
 }
@@ -769,6 +768,7 @@ pub(crate) fn load_config(file_path: &Path) -> Result<DaemonConfig, IndexerError
 
 #[cfg(test)]
 mod tests {
+    use zingod_grpc::TlsFiles;
     use zingod_persistence::Fanout;
 
     use super::*;

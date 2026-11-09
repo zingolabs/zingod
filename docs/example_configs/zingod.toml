@@ -95,12 +95,12 @@ grpc_listen_address = "127.0.0.1:8137"
 # gets a GOAWAY; >= the balancer's down detection + DNS TTL
 hold_goaway_delay_secs = 0
 
-# TLS: unset = self-signed pair generated under <state_dir>/tls at first boot (fingerprint logged);
-# both paths "plaintext" = no TLS (a TLS-terminating proxy in front; warned every 15 min);
-# own pair = PEM files, re-read on change (renewal = no restart)
-# [serve.tls]
-# cert_path = "/etc/zingod/fullchain.pem"
-# key_path = "/etc/zingod/key.pem"
+# TLS: unset = "off" on a loopback grpc_listen_address, refused at boot on any other
+# - { cert_path, key_path } = PEM files, re-read on change (renewal = no restart)
+# - "off" = plaintext (a TLS-terminating proxy in front; warned at boot off loopback)
+# - "self_signed" = pair generated under <state_dir>/tls at first boot (fingerprint logged; only a
+#   client that pins it connects)
+# tls = { cert_path = "/etc/zingod/fullchain.pem", key_path = "/etc/zingod/key.pem" }
 
 # Serving caps (defaults shown); every cap refuses rather than queues, except the read lanes
 [grpc]

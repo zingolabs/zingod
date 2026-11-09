@@ -24,9 +24,7 @@
 //! - Every stage = one plain task in a `JoinSet` (first to end ends the daemon)
 
 use std::future::Future;
-use std::net::SocketAddr;
 use std::sync::Arc;
-use std::time::Duration;
 
 use futures::future::BoxFuture;
 use tokio::sync::{mpsc, watch};
@@ -144,52 +142,29 @@ async fn listen<S: ChainDataSource>(
         .with_health(Arc::clone(status) as Arc<dyn zingod_grpc::Health>);
     let span = component("Grpc");
     let (endpoint, network) = (config.serve.grpc_listen_address, network_name(config.network));
-    let tls = match &config.serve.tls {
-        ServeTls::Plaintext => None,
+    // logged in the config's own spelling
+    let (tls, mode) = match &config.serve.tls {
+        ServeTls::Off => (None, "off"),
         ServeTls::SelfSigned => {
-            Some(Tls::self_signed(&config.serve.state_dir.join("tls"), endpoint)?)
+            let dir = config.serve.state_dir.join("tls");
+            (Some(Tls::self_signed(&dir, endpoint)?), "self_signed")
         }
-        ServeTls::Files(files) => Some(Tls::load(files.clone())?),
+        ServeTls::Files(files) => (Some(Tls::load(files.clone())?), "files"),
     };
-    let mode = if tls.is_some() { "on" } else { "plaintext" };
-    match tls {
-        Some(tls) => {
-            span.in_scope(|| info!(certificate = %tls.leaf_sha256(), "TLS"));
-            server = server.with_tls(tls);
-        }
-        None => {
-            span.in_scope(|| warn!(%endpoint, PLAINTEXT_WARNING));
-            let repeat = plaintext_warnings(endpoint, cancel.child_token());
-            spawn_infallible(tasks, "plaintext-warning", span.clone(), repeat);
-        }
+    if let Some(tls) = tls {
+        span.in_scope(|| info!(certificate = %tls.leaf_sha256(), "TLS"));
+        server = server.with_tls(tls);
     }
     let serving = Serving { routing: server.routing(), admission: server.admission() };
     overload::spawn(server.admission(), &config.serve.state_dir, config.grpc.overload.clone());
     let server = server.bind().await?;
     span.in_scope(|| info!(%endpoint, network, tls = mode, "Listening"));
-    if mode == "plaintext" {
-        span.in_scope(|| warn!(%endpoint, PLAINTEXT_WARNING));
+    // loopback + off = the unset default (nothing to warn about)
+    if config.serve.tls == ServeTls::Off && !endpoint.ip().to_canonical().is_loopback() {
+        span.in_scope(|| warn!(%endpoint, "TLS off, not on loopback: wallet traffic in the clear"));
     }
     spawn_infallible(tasks, "grpc", span, server.run(cancel.child_token()));
     Ok(serving)
-}
-
-const PLAINTEXT_WARNING: &str = "ZingoD is serving data in Plaintext. User traffic is fully open";
-
-/// Repeated every [`PLAINTEXT_WARNING_EVERY`] while serving (a plaintext listener never fades
-/// from the log)
-const PLAINTEXT_WARNING_EVERY: Duration = Duration::from_secs(15 * 60);
-
-async fn plaintext_warnings(endpoint: SocketAddr, cancel: CancellationToken) {
-    let mut tick = tokio::time::interval(PLAINTEXT_WARNING_EVERY);
-    tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-    tick.tick().await; // first tick = now (already warned at bind)
-    loop {
-        tokio::select! {
-            () = cancel.cancelled() => return,
-            _ = tick.tick() => warn!(%endpoint, PLAINTEXT_WARNING),
-        }
-    }
 }
 
 /// - Mainnet/testnet: compiled in (no validator needed to boot)
@@ -590,7 +565,6 @@ mod tests {
     use zingod_source::ZcashLegacyRpcClient;
 
     use crate::config::{DaemonConfigFile, TrustedValidatorTable};
-    use zingod_grpc::TlsFiles;
 
     /// Every way `supervise` ends: the first task to end = the daemon's failure, named; a signal =
     /// clean `Ok`
@@ -759,8 +733,6 @@ mod tests {
             file.network = NetworkType::Regtest;
             file.sync.finalised_depth = NonZeroU32::new(3).expect("non-zero");
             file.serve.grpc_listen_address = address;
-            file.serve.tls =
-                Some(TlsFiles { cert_path: "plaintext".into(), key_path: "plaintext".into() });
             let config = file.resolve().expect("resolves");
             let (cancel, mut tasks) = (CancellationToken::new(), JoinSet::new());
             let status = Arc::new(DaemonStatus::new(config.network, []));

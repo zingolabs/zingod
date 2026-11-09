@@ -17,8 +17,8 @@ ships `aria2c` (the `[snapshot]` bootstrap's downloader), CA certificates and bu
 
 ```sh
 docker run --rm zingod generate-config -o /dev/stdout > zingod.toml   # every key at its default
-# edit zingod.toml: network, [[trusted_validators]]
-docker run -d --name zingod -p 8137:8137 \
+# edit zingod.toml: network, [[trusted_validators]], [serve] tls (required on 0.0.0.0, see TLS)
+docker run -d --name zingod -p 127.0.0.1:8137:8137 \
   -v ./zingod.toml:/etc/zingod/zingod.toml:ro \
   -v zingod-data:/var/lib/zingod \
   zingod
@@ -54,14 +54,18 @@ docker run ... -e ZINGOD_CONFIG_SYNC__CONCURRENCY=64 -e RUST_LOG=info,zingod_grp
 
 The image's one default that differs from a host install is
 `ZINGOD_CONFIG_SERVE__GRPC_LISTEN_ADDRESS=0.0.0.0:8137` (zingod's own default, `127.0.0.1`, is
-unreachable through a published port). To scrape `/metrics`, set
+unreachable through a published port). Off loopback, `[serve] tls` has no default: the container
+refuses to start until it is set ([TLS](#tls)). To scrape `/metrics`, set
 `ZINGOD_CONFIG_METRICS__LISTEN_ADDRESS=0.0.0.0:9999`: zingod warns at boot that it binds a
 non-private address, so publish that port only to the scraper
 ([running.md: Network exposure](./running.md#network-exposure)).
 
 ## TLS
 
-Mount the certificate directory, not the files. zingod re-reads the pair every 60 s, and a
+`[serve] tls` (in `zingod.toml`, or `ZINGOD_CONFIG_SERVE__TLS=off`): `"off"` for a port published
+only to this host or to a TLS-terminating proxy, a certificate pair for wallets reaching the
+container directly. For a pair, mount the certificate directory, not the files. zingod re-reads
+the pair every 60 s, and a
 single-file bind mount keeps the old inode when a renewal replaces the file, so the new
 certificate would never arrive.
 
@@ -79,8 +83,8 @@ validator's `[trusted_validators.indexer_tls]`, named in `zingod.toml`.
 ## Health check
 
 The built-in check GETs the public `/readyz` on `127.0.0.1:8137`, over HTTPS (the certificate
-unchecked: the default pair is self-signed) or, with both `[serve.tls]` paths `"plaintext"`, over
-plaintext. It passes while zingod is `serving` or `degraded`, so a fresh node reports unhealthy
+unchecked, so `"self_signed"` passes) or, with `tls = "off"`, over plaintext. It passes while
+zingod is `serving` or `degraded`, so a fresh node reports unhealthy
 until its indexes reach the tip
 ([states](../packages/zingod/usage.md#the-admin-listener)). With the gRPC listener on another
 port, override it:
@@ -97,7 +101,9 @@ services:
   zingod:
     image: zingodevops/zingod:latest
     ports:
-      - "8137:8137"
+      - "127.0.0.1:8137:8137"
+    environment:
+      ZINGOD_CONFIG_SERVE__TLS: "off"
     volumes:
       - ./zingod.toml:/etc/zingod/zingod.toml:ro   # [[trusted_validators]] jsonrpc_address = "zebra:8232"
       - zingod-data:/var/lib/zingod
