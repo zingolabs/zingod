@@ -148,6 +148,10 @@ hashbrown = "0.16"
 opt-level = 3
 debug = true
 
+# Dependencies optimized whatever the workspace's own level (CI drops that to 0: ci.yml)
+[profile.test.package."*"]
+opt-level = 3
+
 # Lazy point decompression stack (`CompressedTransaction`: block decode w/o curve arithmetic)
 # - orchard = zcash/orchard#562 + perf/merkle-crh-weighted, sapling-crypto = zcash/sapling-crypto#204
 #   + perf/pedersen-windowed, incrementalmerkletree = perf/combine-pairs (batched tree hashing),
