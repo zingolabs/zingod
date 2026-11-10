@@ -7,6 +7,56 @@ files merged since the last one ([RELEASING.md](./RELEASING.md)).
 Before 1.0.0 the project was Zaino, versioned per crate at
 [zingolabs/zaino](https://github.com/zingolabs/zaino): that history is in each crate's
 `CHANGELOG.md` as of its tag `zainod-0.10.2`.
+## 1.1.0 (2026-11-09)
+
+### Features
+
+#### zingod: default index directory moves from the cache home to the data home
+
+An unset `index.<name>.path` now defaults to `$XDG_DATA_HOME/zingod/indexes/<name>` (was
+`$XDG_CACHE_HOME/...`), where cache cleaners do not delete hours of sync. Upgrading with indexes at
+the old default: move `$XDG_CACHE_HOME/zingod/indexes` to `$XDG_DATA_HOME/zingod/indexes` before
+starting, or zingod syncs a new set from scratch. Paths set in the config, and the container image
+(both homes = `/var/lib`), are unaffected.
+
+#### zingod: `[serve] tls` names its mode; TLS off by default on loopback only
+
+`tls` takes `"off"`, `"self_signed"` or `{ cert_path, key_path }` (a `[serve.tls]` table of the
+two paths still works). Unset, a loopback `grpc_listen_address` serves plaintext and any other
+address refuses to start, naming the three choices: the self-signed default it replaces is a
+certificate no wallet verifying against public roots accepts. TLS off away from loopback warns
+once at startup, no longer every 15 minutes.
+
+- Was `cert_path = "plaintext"` + `key_path = "plaintext"`: replace the table with `tls = "off"`
+- Was no `[serve.tls]` off loopback (container image included): set `tls`
+
+#### zingod-source, zingod: validator cookie read again when refused; a local validator's default cookie found
+
+- A cookie (`cookie_path`) is read on the first request and again after the validator answers
+  `401` or `403`: a validator restart's new cookie is used from the request after the refusal
+  (was 401 until zingod restarted). A cookie not yet written at boot is a retried request
+  failure, never a failed start; a cookie that exists and cannot be read fails the start.
+- A `[[trusted_validators]]` entry with no credentials and a loopback `jsonrpc_address` sends no
+  credentials until the validator answers `401` or `403`, then the validator's default cookie,
+  `<cache dir>/zebra/.cookie` or `<cache dir>/zakura/.cookie`, whichever was written last
+  (neither = no auth; to pin one, set `cookie_path`). A validator at any other address is never
+  sent a local cookie.
+
+### Fixes
+
+#### zingod-grpc: `[grpc]` defaults admit concurrent wallets on one connection or one address
+
+- `max_streams_per_connection` 8 → 100, lightwalletd's `grpc-max-concurrent-streams`. One
+  zingolib wallet holds up to 7 streams at once, so 8 left a client that pipelines more
+  requests queueing them client-side until its connection closed.
+- `max_connections_per_ip` 32 → 128: wallets behind one carrier-grade NAT address share it.
+
+### Internal
+
+#### CI compiles workspace test binaries unoptimized
+
+Dependencies stay at `opt-level = 3`; local test builds unchanged.
+
 ## 1.0.0 (2026-11-07)
 
 ### Breaking Changes
