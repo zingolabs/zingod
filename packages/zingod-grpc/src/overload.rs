@@ -38,7 +38,6 @@ impl Overload {
     }
 
     pub(crate) fn refused(&self) {
-        metrics::stream_rejected();
         self.refused.fetch_add(1, Ordering::Relaxed);
     }
 

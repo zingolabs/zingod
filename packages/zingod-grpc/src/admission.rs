@@ -68,6 +68,7 @@ impl AdmissionState {
         let taken = |held: usize| (held < limit).then_some(held + 1);
         if self.held.fetch_update(Ordering::Relaxed, Ordering::Relaxed, taken).is_err() {
             self.overload.refused();
+            metrics::stream_rejected();
             return None;
         }
         self.overload.admitted();

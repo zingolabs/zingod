@@ -8,7 +8,7 @@
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use bytes::Bytes;
 use futures::future::BoxFuture;
@@ -85,7 +85,7 @@ where
         let mut close = CloseOut {
             method,
             started: Instant::now(),
-            first_message: None,
+            answered: false,
             sent: 0,
             code: None,
             message: None,
@@ -103,23 +103,18 @@ where
             None => OriginVerdict::Default,
         };
         if verdict == OriginVerdict::Blocked {
-            close.code = Some(Code::PermissionDenied);
             let refusal = Status::permission_denied("origin blocked").into_http();
-            let refusal = refusal.map(|inner| Guarded { inner, slot: None, ticket, close });
-            return Box::pin(std::future::ready(Ok(refusal)));
+            return Box::pin(std::future::ready(Ok(refused(refusal, ticket, close))));
         }
         // every unblocked origin = one admission path (Origin client-settable, never lifts a cap)
-        let slot = match method.is_some_and(Method::is_subscription) {
-            true => None,
-            false => match self.admission.admit() {
-                Some(slot) => Some(slot),
-                None => {
-                    close.code = Some(Code::Unavailable);
-                    let refusal = admission::refused();
-                    let refusal = refusal.map(|inner| Guarded { inner, slot: None, ticket, close });
-                    return Box::pin(std::future::ready(Ok(refusal)));
-                }
-            },
+        let slot = if method.is_some_and(Method::is_subscription) {
+            None
+        } else {
+            let Some(slot) = self.admission.admit() else {
+                let refusal = refused(admission::refused(), ticket, close);
+                return Box::pin(std::future::ready(Ok(refusal)));
+            };
+            Some(slot)
         };
 
         let inner = self.inner.clone();
@@ -133,6 +128,16 @@ where
     }
 }
 
+/// A refusal before any handler ran, measured as the request it was (`code` = its `grpc-status`)
+fn refused(
+    refusal: Response<tonic::body::Body>,
+    ticket: Ticket,
+    mut close: CloseOut,
+) -> Response<Guarded<tonic::body::Body>> {
+    close.code = status_of(refusal.headers()).map(|(code, _)| code);
+    refusal.map(|inner| Guarded { inner, slot: None, ticket, close })
+}
+
 /// Response body owning its stream's guards (`slot` = `None`: a subscription, a refusal, or ended)
 #[derive(Debug)]
 pub(crate) struct Guarded<B> {
@@ -144,13 +149,13 @@ pub(crate) struct Guarded<B> {
 
 /// One stream's measurement to its end, recorded on drop
 ///
-/// - `first_message` = admission → first DATA frame
+/// - `answered` = first DATA frame sent (its time = `first_message_seconds`)
 /// - `message` = non-`Ok` status message
 #[derive(Debug)]
 struct CloseOut {
     method: Option<Method>,
     started: Instant,
-    first_message: Option<Duration>,
+    answered: bool,
     sent: u64,
     code: Option<Code>,
     message: Option<String>,
@@ -180,10 +185,9 @@ impl<B: Body<Data = Bytes> + Unpin> Body for Guarded<B> {
                     if let Some(slot) = this.slot.as_mut() {
                         slot.handed();
                     }
-                    if close.first_message.is_none() {
-                        let elapsed = close.started.elapsed();
-                        close.first_message = Some(elapsed);
-                        metrics::first_message(close.method, elapsed);
+                    if !close.answered {
+                        close.answered = true;
+                        metrics::first_message(close.method, close.started.elapsed());
                     }
                     close.sent += u64::try_from(chunk.len()).expect("usize fits u64");
                 }

@@ -181,8 +181,6 @@ pub(crate) fn first_message(method: Option<Method>, elapsed: Duration) {
 }
 
 /// One stream's close-out (recorded where the body drops)
-///
-/// - `latency` = time to its first message, for an answered work request
 pub(crate) fn stream_finished(method: Option<Method>, code: Code, elapsed: Duration, sent: u64) {
     let name = method_label(method);
     metrics::counter!(REQUESTS_TOTAL, "method" => name, "code" => code_label(code)).increment(1);
