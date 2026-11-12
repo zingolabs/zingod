@@ -343,6 +343,34 @@ A `cert.pem` with no key beside it fails startup rather than being replaced.
 The `[grpc]` caps refuse rather than queue, except the read lanes; each is described in the
 example config and in [zingod-grpc: Serve stack](../packages/zingod-grpc/usage.md#serve-stack).
 
+### Browser (gRPC-web) clients
+
+`[serve] grpc_web = true` serves browser wallets over gRPC-web on the same listener: permissive
+CORS (`*`) answers their preflight, native gRPC passes through untouched. Off (the default) sends
+no `Access-Control-Allow-Origin`, so a browser is refused while native clients are unaffected.
+Enabling it makes the listener a public resource: any site's page can drive its visitors'
+browsers against it (the load scales with the embedding site's traffic, not with wallet installs).
+
+Per-origin policy is operated with `zingod origin`, markers under `<state_dir>/origins` read by a
+running zingod within a second (no restart), permanent until changed:
+
+- `zingod origin block <domain>` — refuse every request carrying the origin (`PermissionDenied`)
+- `zingod origin allow <domain>` — exempt it from the work-stream limit (never turned away); a
+  loaded gun (unbounded cost from that origin), for a vetted wallet only
+- `zingod origin reset <domain>` — back to the default per-IP floor
+- `zingod origin` — list every marker in force
+
+A domain is keyed by registrable domain (eTLD+1): `block evil.com` covers its subdomains, and a
+later `allow good.evil.com` carves one back out (most-specific marker wins). `Origin` is
+client-settable, so `allow` is friction relief for known wallets, not a security boundary — the
+per-IP connection cap and `max_streams_per_connection` still bound a spoofer. Browser load by
+verdict is `zingod_grpc_origin_requests_total{verdict}`; find a specific flooding origin in the
+edge/proxy logs, then block it.
+
+gRPC-web over HTTP/1.1 opens one connection per in-flight stream, each counting against
+`max_connections_per_ip`; serving it over TLS (h2) avoids that. Behind a proxy, the per-IP cap
+counts the client the PROXY header names (see below).
+
 ### Stream time limits
 
 No stream has a cap on its total length, so a full sync streams for as long as it keeps

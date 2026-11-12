@@ -87,8 +87,8 @@ accept loop is zingod's. Outermost first, per connection after the first three:
 
 ```text
 accept ─ total cap ─ PROXY header (trusted peers) ─ per-client cap ─ TLS ─ h2 / HTTP/1.1
-  ─ health (resolves the RPC) ─ guard (metrics, admission, stall watch)
-  ─ dispatch (grpc-timeout, silence, request body) ─ handler
+  ─ health (resolves the RPC) ─ CORS + gRPC-web (with_grpc_web) ─ guard (metrics, admission,
+    origin gate, stall watch) ─ dispatch (grpc-timeout, silence, request body) ─ handler
 ```
 
 The guard (`guard.rs`) wraps each response body once: the body owns its admission slot, its
@@ -99,7 +99,17 @@ stream ending or its client disconnecting). What each `[grpc]` cap bounds:
 - **Health** (`with_health(Arc<dyn Health>)`): `GET /readyz` (`200` / `503`) and `GET /status`
   (always `200`), answered before admission over HTTP/1.1 or h2, so they never take a work slot.
   Each connection may send 10 at once and regains one per second; past that `429`. A non-`GET`
-  is `405`, any other path over HTTP/1.x `404`.
+  is `405`, any other path over HTTP/1.x `404` — forwarded to the gRPC-web stack instead when
+  `with_grpc_web(true)` (browser gRPC-web and its CORS preflight ride HTTP/1.1).
+- **Browser gRPC-web** (`with_grpc_web(true)`): `tower-http` CORS (`*`, grpc-status / grpc-message
+  exposed) answers the preflight, `tonic-web` translates gRPC-web framing; native gRPC is
+  untouched (CORS short-circuits only an `OPTIONS` preflight). Off = no CORS, so a browser is
+  refused. Per-origin policy is the gate below.
+- **Origin gate** (`with_origin_gate(Arc<OriginGate>)`, read in `guard.rs`): a request's `Origin`
+  → `block` (`PermissionDenied` before admission), `allow` (an exempt slot past the work-stream
+  limit, never refused) or default (the normal admission path). A missing `Origin` (native
+  clients) is default and uncounted. Markers are set operator-side (`zingod origin`) and swapped
+  whole each second; `verdict` folds an incoming host to the most-specific marker covering it.
 - **TLS** (`with_tls(Tls::load(files)?)` or `with_tls(Tls::self_signed(dir, listen)?)`): rustls
   with the aws-lc-rs provider, ALPN `h2` then `http/1.1` (load-balancer monitors connect over
   HTTPS/1.1). A missing or mismatched pair fails `Tls::load`, never plaintext. The files are

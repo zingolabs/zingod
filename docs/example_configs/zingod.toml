@@ -87,6 +87,9 @@ max_attempts = 4
 [serve]
 # CompactTxStreamer gRPC over HTTP/2
 grpc_listen_address = "127.0.0.1:8137"
+# serve browser (gRPC-web) clients too: Origin-mirroring CORS on this listener, native gRPC
+# untouched; refuse/exempt origins with `zingod origin`. off = no CORS, browsers refused
+grpc_web = false
 # Max transparent receives one address request walks (all its addresses); over = RESOURCE_EXHAUSTED
 # max_address_rows = 100000
 # zingod's own state, kept across restarts (`zingod hold` writes its marker here);
