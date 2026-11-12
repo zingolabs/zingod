@@ -93,6 +93,9 @@
             # zingod `[snapshot]` bootstrap + its e2e test
             aria2
 
+            # book/ (GitHub Pages)
+            mdbook
+
             # Integration tests
             kind
             kubectl
