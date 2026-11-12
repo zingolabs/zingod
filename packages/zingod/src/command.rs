@@ -4,6 +4,7 @@
 //!   second: both halves of each contract live in its file)
 
 pub(super) mod hold;
+pub(super) mod origin;
 pub(super) mod overload;
 pub(super) mod verify;
 

@@ -51,4 +51,15 @@ pub(super) enum Command {
         #[command(subcommand)]
         action: crate::command::overload::Action,
     },
+    /// Origin policy for browser (gRPC-web) clients, across restarts: markers in `[serve]
+    /// state_dir`/origins, read by the running zingod within a second.
+    ///
+    /// `block` refuses every request carrying an origin; `allow` exempts one from rate limits and
+    /// overload refusals; `reset` returns one to the default (per-IP) floor. With no action,
+    /// prints every marker in force. Permanent until changed. Exits 0 once the marker matches, 1
+    /// on an invalid domain or an unreadable config or state directory.
+    Origin {
+        #[command(subcommand)]
+        action: Option<crate::command::origin::Action>,
+    },
 }
