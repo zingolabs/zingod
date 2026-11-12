@@ -4,7 +4,7 @@ The repo-root `CLAUDE.md` applies here in full. This file adds the rules that
 are specific to the live suite, and overrides the root where it says so.
 
 The sets, how to run them and the cluster setup are in
-[`docs/testing.md`](../docs/testing.md).
+[`book/src/contributors/testing.md`](../book/src/contributors/testing.md).
 
 ## What belongs here
 
@@ -73,7 +73,7 @@ async fn send_to_self(#[case] pool: Pool) -> Result<()> {
 ```
 
 Zebra is the only validator, so it is not an axis (how Zingod reaches it:
-[running.md: Validator client](../docs/running.md#validator-client)). A single-case
+[validator client](../book/src/operators/configuration.md#validator-client)). A single-case
 `#[rstest]` is noise: write a plain test.
 
 ## Tag the QoS tier, and tag it honestly

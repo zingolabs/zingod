@@ -1,6 +1,6 @@
 # zingod config paired with zebrad.toml (Testnet)
 #
-# - Env overrides + unknown-key rule: docs/running.md#configuration
+# - Env overrides + unknown-key rule: https://zingolabs.github.io/zingod/operators/configuration.html
 # - `zingod generate-config` = every key at its default
 
 # mainnet | testnet | regtest (default mainnet)
@@ -141,10 +141,12 @@ max_connection_age_secs = 1800
 max_connection_age_grace_secs = 600
 # GOAWAY a connection with no open stream for this long (frees its per-client slot); 0 = never
 max_connection_idle_secs = 1800
-# proxies that open every connection with a PROXY header (v1/v2); see docs/running.md
+# proxies that open every connection with a PROXY header (v1/v2)
+# - https://zingolabs.github.io/zingod/operators/network.html#behind-a-proxy
 trusted_proxies = []
 # SIGTERM/SIGINT closes the listener at once; open connections get this long to finish (GOAWAY
-# sent). Out of a load balancer's rotation first = `zingod hold` (see docs/running.md)
+# sent). Out of a load balancer's rotation first = `zingod hold`
+# - https://zingolabs.github.io/zingod/operators/maintenance.html#operator-hold
 shutdown_grace_secs = 10
 
 # When /readyz reports `Overloaded: <cause>` (0 = that cause off; `zingod overload` overrides live)

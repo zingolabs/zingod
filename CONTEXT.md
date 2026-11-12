@@ -1,6 +1,6 @@
 # Zingod glossary
 
-One word per concept; names, docs and logs use these. System design: [docs/architecture.md](docs/architecture.md).
+One word per concept; names, docs and logs use these. System design: [book/src/contributors/architecture.md](book/src/contributors/architecture.md).
 
 ## Zingod terms
 

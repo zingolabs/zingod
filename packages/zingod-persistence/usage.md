@@ -240,5 +240,5 @@ implementation writes and owns its tests; there is no shared harness.
 - **Files-only tests**: every crash state of a commit history, every failed I/O call, open's
   trimming and refusals, the manifest body's golden bytes, and `verify`.
 
-After any change to this crate: the [heavy run](../../docs/testing.md#heavy-run) (required
+After any change to this crate: the [heavy run](../../book/src/contributors/testing.md#heavy-run) (required
 before the change is done; `CLAUDE.md`).

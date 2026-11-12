@@ -137,8 +137,12 @@ say so when you do.
 
 ## Docs: one home per fact
 
-System design (how crates fit together, what each source is trusted for, why) lives
-in `docs/architecture.md` only; operating `zingod` lives in `docs/running.md`. Each
+Every doc outside a crate lives in the mdBook under `book/` (published to GitHub Pages):
+the wallet contract in `book/src/wallets/` (only where Zingod goes beyond the vendored
+protos, which it includes rather than restates), operating `zingod` in
+`book/src/operators/`, and system design (how crates fit together, what each source is
+trusted for, why) in `book/src/contributors/architecture.md` only. A book page links
+outside `book/src/` only by absolute GitHub URL (relative links break on Pages). Each
 crate's `packages/<crate>/usage.md` (the crate's rustdoc too, where its `lib.rs`
 has `#![doc = include_str!("../usage.md")]`) holds crate-specific detail only:
 wiring, API contract, invariant tables, tests. An invariant code (`T1`, `G5`, …)
@@ -157,7 +161,7 @@ neither substitutes for the other. Purely internal refactors need no guide edit.
 
 ## Heavy proptest run before you're done
 
-After **any** change inside a crate the [heavy run](docs/testing.md#heavy-run) lists (code,
+After **any** change inside a crate the [heavy run](book/src/contributors/testing.md#heavy-run) lists (code,
 tests, `SimFs`, even a refactor), and before reporting the work as done, run that block with
 `crate=<that crate>`: the 3-minute loop, then every crate built on it. The default run is
 deliberately light and is not enough.

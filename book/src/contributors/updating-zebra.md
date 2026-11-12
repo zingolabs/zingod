@@ -15,7 +15,7 @@ tagged Zebra source for the node version you target, not the crates.io crates.
 
 1. Take a baseline on `dev` with `cargo nextest run --workspace` and the live suite.
 1. Bump the version in every `Validator::zebrad("…")` under `live-tests/`, and the zebrad
-   version stated in [running.md](./running.md#requirements).
+   version stated in [the requirements](../operators/quick-start.md#requirements).
 1. Check out the matching tag in the `zebra` checkout beside this repository: the sync profiles
    build zebrad's image from it.
 1. Run the live tests ([testing.md](./testing.md)). A changed response shape shows up as a parse

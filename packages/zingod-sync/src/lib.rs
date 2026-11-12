@@ -1,5 +1,5 @@
 //! The finalized path: [`FinalizedFollower`] → [`FinalizedStream<Block>`] → each index's writer
-//! loop (`docs/architecture.md` §7)
+//! loop (`book/src/contributors/architecture.md` §7)
 //!
 //! - One sender, every step finalized: each height once, ascending, never retracted
 //! - Each writer: its own loop over its [`Subscription`]'s runs, its store published through an

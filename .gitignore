@@ -3,3 +3,5 @@ target/
 # nix build
 /result
 /.helix
+# mdbook build output
+/book/book/

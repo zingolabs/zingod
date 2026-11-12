@@ -56,7 +56,7 @@ pub(crate) async fn validate<S: ChainDataSource>(
 /// Relay job for `validated` → its txid on the first acceptance, else the verdict
 ///
 /// - job outlives the answer (`shutdown` cancels it)
-/// - protocol: `docs/architecture.md` §6, API: `usage.md` "Submission"
+/// - protocol: `book/src/contributors/architecture.md` §6, API: `usage.md` "Submission"
 pub(crate) async fn broadcast<S: ChainDataSource>(
     core: &Arc<ChainViewCore>,
     balancer: &TrafficBalancer<S>,

@@ -118,7 +118,7 @@ impl<S: ChainDataSource> ChainView<S> {
     }
 
     /// Relay to the validators (+ peers) → txid on the first acceptance (relay outlives the answer)
-    /// - protocol: `docs/architecture.md` §6, API: `usage.md` "Submission"
+    /// - protocol: `book/src/contributors/architecture.md` §6, API: `usage.md` "Submission"
     pub async fn broadcast_transaction(
         &self,
         validated: ValidatedTransaction,

@@ -336,7 +336,7 @@ fn run(fanout: usize, flush_device: bool, steps: &[Step]) {
 }
 
 proptest! {
-    // - 64 cases ≈ seconds (heavy run after any change: docs/testing.md "Heavy run")
+    // - 64 cases ≈ seconds (heavy run after any change: `book/src/contributors/testing.md`)
     // - shrinking past the default 4 × cases (a 100-seq removal shrinks to the seqs that matter),
     //   for at most 20 s (inside the default profile's 60 s kill)
     #![proptest_config(ProptestConfig {

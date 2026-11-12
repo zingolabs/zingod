@@ -3,7 +3,7 @@
 Zingod has two kinds of test. The unit and model tests in `packages/*` run on the host with
 `cargo nextest run --workspace` and need no validator, although they are not network-free
 (`zingod-grpc`, for example, binds a loopback socket). Their blocks, headers and validators come
-from one builder, [`MockChain`](../packages/zingod-source/usage.md#testing-mockchain). The live
+from one builder, [`MockChain`](https://github.com/zingolabs/zingod/blob/main/packages/zingod-source/usage.md#testing-mockchain). The live
 tests in `live-tests/` run a deployed zingod against a real zebrad on Kubernetes, driven by
 [ztest](https://github.com/zingolabs/ztest).
 
@@ -11,11 +11,11 @@ tests in `live-tests/` run a deployed zingod against a real zebrad on Kubernetes
 | -------------------------------- | ---------------------------------------------------------------------------------- |
 | `live-tests/clientless`          | zingod's gRPC answers checked against the validator as oracle, with no wallet      |
 | `live-tests/e2e`                 | a real wallet syncing and sending through zingod's gRPC to a live validator        |
-| `live-tests/non-finalized-state` | reorgs forced on a regtest zebrad, checked across every index ([README](../live-tests/non-finalized-state/README.md)) |
+| `live-tests/non-finalized-state` | reorgs forced on a regtest zebrad, checked across every index ([README](https://github.com/zingolabs/zingod/blob/main/live-tests/non-finalized-state/README.md)) |
 | `live-tests/sync`                | the long-running mainnet profiles `zingod_index_construction` and `zingod_index_crash_consistency` |
 
 `live-tests/` is a standalone Cargo workspace, and `live-tests/sync/` a second one nested inside
-it, each with its own lock. The rules for writing live tests: [live-tests/CLAUDE.md](../live-tests/CLAUDE.md).
+it, each with its own lock. The rules for writing live tests: [live-tests/CLAUDE.md](https://github.com/zingolabs/zingod/blob/main/live-tests/CLAUDE.md).
 
 ## Model tests in bulk
 

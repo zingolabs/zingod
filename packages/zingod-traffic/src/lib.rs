@@ -1,4 +1,5 @@
-//! Every request to trusted validators and peers, one scheduler (`docs/architecture.md` §9)
+//! Every request to trusted validators and peers, one scheduler
+//! (`book/src/contributors/architecture.md` §9)
 //!
 //! - [`TrafficBalancer`]: asks by class, each answer naming its sender ([`Answered::ticket`])
 //! - [`TrafficDriver`]: one task (the core's clock, every trusted member's poll)

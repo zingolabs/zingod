@@ -43,7 +43,7 @@ const UNPACKED_DONE: &str = "unpacked.done";
 const LOG_EVERY: Duration = Duration::from_secs(30);
 const POLL_EVERY: Duration = Duration::from_secs(1);
 
-/// Published beside the archives (`docs/running.md` "Index snapshot"): one seed, one height
+/// Published beside the archives (`book/src/operators/first-sync.md`): one seed, one height
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Manifest {

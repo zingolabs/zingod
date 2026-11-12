@@ -1,7 +1,7 @@
 # Contributing to Zingod
 
 Contributions of code, documentation, bug reports and feature requests are
-welcome. To run Zingod, start with [running zingod](./docs/running.md).
+welcome. To run Zingod, start with [the operators chapter](./book/src/operators/quick-start.md).
 
 ## Security issues
 
@@ -36,7 +36,7 @@ The ZingoLabs [Matrix channel](https://matrix.to/#/!cVsptZxBgWgmxWlHYB:matrix.or
   [commit signature verification](https://docs.github.com/en/authentication/managing-commit-signature-verification/about-commit-signature-verification).
 - Keep docs accurate to your latest commit, including doc comments and the
   affected crate's `usage.md` and, for system-level behaviour,
-  `docs/architecture.md`.
+  `book/src/contributors/architecture.md`.
 
 ## Development
 
@@ -60,7 +60,7 @@ it worse, `code-dupes ignore <fingerprint> --reason "..."` records a reviewed ex
 `.dupes-ignore.toml`.
 
 The live suites run on a Kubernetes cluster through `ztest`, never in GitHub CI; see
-[docs/testing.md](./docs/testing.md).
+[book/src/contributors/testing.md](./book/src/contributors/testing.md).
 
 The reference platform is Debian 12 (Bookworm) on `x86_64-unknown-linux-gnu`;
 the container image builds on it.

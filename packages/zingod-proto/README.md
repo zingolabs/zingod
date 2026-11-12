@@ -41,7 +41,7 @@ proto/zebra_indexer.proto         zebra's indexer.proto + GetBlockRange
 Local edits to upstream `service.proto`: `Ping` / `Duration` / `PingResponse`
 and `GetBlockNullifiers` removed; `GetBlockRangeNullifiers` and
 `GetTaddressTxids` marked deprecated and TODO: REMOVE (served only while
-pepper-sync calls them — see [`docs/rpc_api.md`](../../docs/rpc_api.md)).
+pepper-sync calls them — see [the book](../../book/src/wallets/methods.md#deprecated-and-unsupported)).
 
 ## Generation
 

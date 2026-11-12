@@ -1,5 +1,5 @@
 # zebrad config paired with zingod.toml (Testnet). Omitted keys take zebrad's defaults.
-# Run: zebrad -c docs/example_configs/zebrad.toml start
+# Run: zebrad -c zebrad.toml start
 
 [network]
 network = "Testnet"

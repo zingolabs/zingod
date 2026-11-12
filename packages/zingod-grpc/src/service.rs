@@ -105,11 +105,13 @@ impl Method {
             GetAddressUtxosStream => (Work, Stream, Some(TransparentAddress)),
             GetTaddressBalance => (Work, One, Some(TransparentAddress)),
             GetTaddressBalanceStream => (Work, One, Some(TransparentAddress)),
-            // index names the txs, a validator holds the bytes (`docs/architecture.md` §1)
+            // index names the txs, a validator holds the bytes
+            // (`book/src/contributors/architecture.md` §1)
             GetTaddressTransactions => (Work, Stream, Some(TransparentAddress)),
             // TODO: REMOVE — deprecated alias of `GetTaddressTransactions` (pepper-sync calls it)
             GetTaddressTxids => (Work, Stream, Some(TransparentAddress)),
-            // one random entry per attempt, watched until it spreads (`docs/architecture.md` §6)
+            // one random entry per attempt, watched until it spreads
+            // (`book/src/contributors/architecture.md` §6)
             SendTransaction => (Work, One, None),
             GetMempoolTx => (Work, Stream, None),
             // open until the served tip moves, silent between arrivals

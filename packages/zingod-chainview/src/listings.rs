@@ -1,4 +1,5 @@
-//! Peers' mempool listings → which transactions a peer quorum holds (`docs/architecture.md` §5)
+//! Peers' mempool listings → which transactions a peer quorum holds
+//! (`book/src/contributors/architecture.md` §5)
 //!
 //! - admit: > 2/3 of the fresh listings hold the id, its listers in > [`ECLIPSE_NETGROUPS`]
 //!   netgroups (each a full node that validated it: policy + consensus, ours never re-run)
