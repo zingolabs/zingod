@@ -26,7 +26,7 @@ every enabled index, and `p2p.cache_dir` if `[p2p]` is enabled.
 | `[submission]`           | how `SendTransaction` retries relaying                                                   |
 | `[p2p]`                  | Zingod's own Zcash p2p peers (off by default)                                            |
 | `[serve]`                | gRPC listen address, TLS, gRPC-web, state directory, drain delay                         |
-| `[grpc]`                 | connection and stream limits, timeouts, trusted proxies, overload thresholds             |
+| `[grpc]`                 | [DoS protection](dos-protection.md) limits and timeouts, trusted proxies, shutdown grace |
 | `[metrics]`              | admin listener for metrics and probes (off by default)                                   |
 | `[sync]`                 | block fetching and finality depth                                                        |
 | `[index.<name>]`         | per index: `enabled` and `path`                                                          |

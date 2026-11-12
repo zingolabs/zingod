@@ -8,7 +8,7 @@ Zingod reports a single state. The same value appears in `/readyz`, `/status`, t
 | State          | Meaning                                                                                   | `/readyz` |
 | -------------- | ----------------------------------------------------------------------------------------- | --------- |
 | `held`         | an operator ran [`zingod hold`](maintenance.md#operator-hold)                             | `503`     |
-| `down`         | cannot serve: the server is stalled or [overloaded](maintenance.md#overload), startup is waiting for a validator, or the tip is unverified and stale | `503`     |
+| `down`         | cannot serve: the server is stalled or [overloaded](dos-protection.md#overload), startup is waiting for a validator, or the tip is unverified and stale | `503`     |
 | `provisioning` | starting up, or installing an [index snapshot](first-sync.md#index-snapshot)              | `503`     |
 | `degraded`     | serving a recent tip that no trusted validator has confirmed (p2p peers supplied it)      | `200`     |
 | `syncing`      | serving, but behind the best block; or no validator's mempool is available yet            | `503`     |
