@@ -344,6 +344,8 @@ fn bytes(mib: NonZeroU32) -> NonZeroU64 {
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct ServeTable {
     pub(crate) grpc_listen_address: SocketAddr,
+    /// Browser (gRPC-web) clients on the gRPC listener: `Origin`-gated CORS (`zingod origin`)
+    grpc_web: bool,
     /// Across one request's addresses, whole history (over = `RESOURCE_EXHAUSTED`, never partial)
     max_address_rows: NonZeroUsize,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -359,6 +361,7 @@ impl Default for ServeTable {
     fn default() -> Self {
         Self {
             grpc_listen_address: SocketAddr::from(([127, 0, 0, 1], 8137)),
+            grpc_web: false,
             max_address_rows: DEFAULT_MAX_ADDRESS_ROWS,
             tls: None,
             state_dir: paths::default_state(),
@@ -370,11 +373,24 @@ impl Default for ServeTable {
 impl ServeTable {
     /// `Err` = unset `state_dir` with no home dir, or `tls` ([`serve_tls::resolve`])
     fn resolve(self) -> Result<ServeConfig, IndexerError> {
-        let Self { grpc_listen_address, max_address_rows, tls, state_dir, hold_goaway_delay } =
-            self;
+        let Self {
+            grpc_listen_address,
+            grpc_web,
+            max_address_rows,
+            tls,
+            state_dir,
+            hold_goaway_delay,
+        } = self;
         let state_dir = resolved_path(state_dir, "serve.state_dir", paths::default_state)?;
         let tls = serve_tls::resolve(tls, grpc_listen_address)?;
-        Ok(ServeConfig { grpc_listen_address, max_address_rows, tls, state_dir, hold_goaway_delay })
+        Ok(ServeConfig {
+            grpc_listen_address,
+            grpc_web,
+            max_address_rows,
+            tls,
+            state_dir,
+            hold_goaway_delay,
+        })
     }
 }
 
@@ -382,6 +398,7 @@ impl ServeTable {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ServeConfig {
     pub(crate) grpc_listen_address: SocketAddr,
+    pub(crate) grpc_web: bool,
     pub(crate) max_address_rows: NonZeroUsize,
     pub(crate) tls: ServeTls,
     pub(crate) state_dir: PathBuf,

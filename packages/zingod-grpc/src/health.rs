@@ -59,12 +59,15 @@ pub(crate) struct HealthRoute<Inner> {
     inner: Inner,
     health: Option<Arc<dyn Health>>,
     bucket: Arc<Mutex<Bucket>>,
+    grpc_web: bool,
 }
 
 impl<Inner> HealthRoute<Inner> {
-    pub(crate) fn new(inner: Inner, health: Option<Arc<dyn Health>>) -> Self {
+    /// `grpc_web` = forward non-health HTTP/1.1 to `inner` (browser gRPC-web + its CORS preflight);
+    /// off = HTTP/1.1 is health-only (404 otherwise)
+    pub(crate) fn new(inner: Inner, health: Option<Arc<dyn Health>>, grpc_web: bool) -> Self {
         let bucket = Bucket { due: Instant::now() };
-        Self { inner, health, bucket: Arc::new(Mutex::new(bucket)) }
+        Self { inner, health, bucket: Arc::new(Mutex::new(bucket)), grpc_web }
     }
 
     fn answer(&self, path: &str) -> Option<Response<Full<Bytes>>> {
@@ -127,7 +130,7 @@ where
             }
         } else if health_path {
             Some(plain(StatusCode::METHOD_NOT_ALLOWED, String::new(), "text/plain"))
-        } else if request.version() < Version::HTTP_2 {
+        } else if request.version() < Version::HTTP_2 && !self.grpc_web {
             Some(plain(StatusCode::NOT_FOUND, String::new(), "text/plain"))
         } else {
             None
@@ -221,7 +224,7 @@ mod tests {
         ];
         for (case, health, method, path, version, status, body) in cases {
             let health = health.map(|fixed| Arc::new(fixed) as Arc<dyn Health>);
-            let mut route = HealthRoute::new(Passed, health);
+            let mut route = HealthRoute::new(Passed, health, false);
 
             let answered = send(&mut route, method, path, version).await;
 
@@ -232,7 +235,7 @@ mod tests {
     /// Paused clock: `BURST` at once, then one back per `REFILL`
     #[tokio::test(start_paused = true)]
     async fn health_requests_are_rate_limited_per_connection() {
-        let mut route = HealthRoute::new(Passed, Some(Arc::new(Fixed { ready: true }) as _));
+        let mut route = HealthRoute::new(Passed, Some(Arc::new(Fixed { ready: true }) as _), false);
         let mut readyz = async || send(&mut route, Method::GET, READYZ, Version::HTTP_11).await.0;
 
         let mut codes = Vec::new();

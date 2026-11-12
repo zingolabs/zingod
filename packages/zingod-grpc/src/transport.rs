@@ -17,6 +17,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
+use tower::Layer as _;
 use tracing::{debug, info, warn, Instrument as _, Span};
 use zingod_persistence::PinnedView;
 use zingod_source::ChainDataSource;
@@ -72,6 +73,7 @@ pub struct GrpcService<S: ChainDataSource, V> {
     admission: Arc<AdmissionState>,
     health: Option<Arc<dyn Health>>,
     retire: Retire,
+    grpc_web: bool,
 }
 
 /// Boot-time only: a bound server never fails ([`BoundGrpcService::run`] returns `()`)
@@ -87,7 +89,14 @@ impl<S: ChainDataSource, V: PinnedView> GrpcService<S, V> {
         let dispatch = Dispatch::new(&limits);
         let admission = Arc::new(AdmissionState::new(&limits));
         let retire = Retire::default();
-        Self { dispatch, bind, limits, tls: None, admission, health: None, retire }
+        Self { dispatch, bind, limits, tls: None, admission, health: None, retire, grpc_web: false }
+    }
+
+    /// Serve gRPC-web (browser) clients too: permissive CORS (`*`) on this listener, native
+    /// gRPC untouched (the `Origin` gate does the blocking; off = no CORS, browsers refused)
+    pub fn with_grpc_web(mut self, grpc_web: bool) -> Self {
+        self.grpc_web = grpc_web;
+        self
     }
 
     /// Routes these methods once its owner has them, before or after `run`
@@ -161,8 +170,27 @@ impl<S: ChainDataSource, V: PinnedView> GrpcService<S, V> {
     }
 }
 
-/// Per-connection service stack (usage.md "Serve stack")
-type Stack<S, V> = TowerToHyperService<HealthRoute<Guard<Dispatch<S, V>>>>;
+/// gRPC-web CORS on the gRPC listener (`enabled` false = none, so a browser preflight gets no
+/// `Access-Control-Allow-Origin` and is refused; native and non-browser clients unaffected)
+///
+/// - `*` origin + `Any` headers (public endpoint; the `Origin` gate does the refusing, not CORS)
+/// - grpc-status / grpc-message exposed (browser reads a gRPC trailer off the body)
+fn cors(enabled: bool) -> tower_http::cors::CorsLayer {
+    use tower_http::cors::{Any, CorsLayer};
+    if !enabled {
+        return CorsLayer::new();
+    }
+    CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any)
+        .expose_headers([
+            http::header::HeaderName::from_static("grpc-status"),
+            http::header::HeaderName::from_static("grpc-message"),
+            http::header::HeaderName::from_static("grpc-status-details-bin"),
+        ])
+        .max_age(Duration::from_secs(3600))
+}
 
 /// What every connection task shares
 struct Shared<S: ChainDataSource, V> {
@@ -174,6 +202,7 @@ struct Shared<S: ChainDataSource, V> {
     dispatch: Dispatch<S, V>,
     admission: Arc<AdmissionState>,
     limits: GrpcLimits,
+    grpc_web: bool,
     cancel: CancellationToken,
 }
 
@@ -220,6 +249,7 @@ impl<S: ChainDataSource, V: PinnedView> BoundGrpcService<S, V> {
             dispatch: server.dispatch,
             admission: server.admission,
             limits: server.limits,
+            grpc_web: server.grpc_web,
             cancel: cancel.clone(),
         });
         let mut backoff = ACCEPT_BACKOFF_MIN;
@@ -363,8 +393,10 @@ impl<S: ChainDataSource, V: PinnedView> Shared<S, V> {
         let admission = Arc::clone(&self.admission);
         let guard =
             Guard::new(self.dispatch.clone(), admission, Arc::clone(&stalls), activity.clone());
-        let service: Stack<S, V> =
-            TowerToHyperService::new(HealthRoute::new(guard, self.health.clone()));
+        // CORS outermost (answers browser preflight), then gRPC-web framing, native gRPC through
+        let gated = cors(self.grpc_web).layer(tonic_web::GrpcWebLayer::new().layer(guard));
+        let service =
+            TowerToHyperService::new(HealthRoute::new(gated, self.health.clone(), self.grpc_web));
         let serving = self.http.serve_connection(TokioIo::new(io), service);
         let mut serving = std::pin::pin!(serving);
         let limits = &self.limits;
@@ -905,5 +937,75 @@ mod tests {
         routing.route(unserved());
         let routed = (Code::Unavailable, NOTHING_SERVED.to_owned());
         assert_eq!(lightd_info().await, routed, "routed after bind: the routes' own answer");
+    }
+
+    /// A browser CORS preflight (OPTIONS + `Access-Control-Request-Method`) to a gRPC path, its
+    /// raw response lowercased (`Connection: close` = server closes once answered)
+    async fn preflight(bind: SocketAddr) -> String {
+        let request = "OPTIONS /cash.z.wallet.sdk.rpc.CompactTxStreamer/GetLightdInfo HTTP/1.1\r\n\
+             Host: zec.global\r\n\
+             Origin: https://wallet.example\r\n\
+             Access-Control-Request-Method: POST\r\n\
+             Access-Control-Request-Headers: content-type,x-grpc-web\r\n\
+             Connection: close\r\n\r\n";
+        let mut stream = tokio::net::TcpStream::connect(bind).await.expect("connects");
+        stream.write_all(request.as_bytes()).await.expect("writes preflight");
+        let mut response = Vec::new();
+        tokio::time::timeout(SCHEDULING, stream.read_to_end(&mut response))
+            .await
+            .expect("server answered and closed")
+            .expect("read");
+        String::from_utf8_lossy(&response).to_ascii_lowercase()
+    }
+
+    /// gRPC-web on: a browser preflight gets a permissive CORS grant, and native gRPC over the
+    /// same listener is untouched by the layer
+    #[tokio::test]
+    async fn grpc_web_answers_a_preflight_and_still_serves_native_grpc() {
+        let server = GrpcService::new(ANY_PORT, GrpcLimits::default())
+            .with_grpc_web(true)
+            .with_routes(unserved());
+        let bound = server.bind().await.expect("binds");
+        let bind = bound.local_addr().expect("bound");
+        let cancel = CancellationToken::new();
+        let serving = tokio::spawn(bound.run(cancel.clone()));
+
+        let preflight = preflight(bind).await;
+        assert!(
+            preflight.contains("access-control-allow-origin: *")
+                && preflight.contains("access-control-allow-methods"),
+            "preflight answered with CORS, got:\n{preflight}",
+        );
+
+        let mut wallet =
+            CompactTxStreamerClient::connect(format!("http://{bind}")).await.expect("connects");
+        let refusal = wallet.get_lightd_info(service::Empty {}).await.expect_err("nothing served");
+        assert_eq!(
+            (refusal.code(), refusal.message()),
+            (Code::Unavailable, NOTHING_SERVED),
+            "native gRPC decodes over h2, unaffected by the CORS / gRPC-web layer",
+        );
+
+        cancel.cancel();
+        serving.await.expect("the serve task ran");
+    }
+
+    /// gRPC-web off (the default): the same preflight gets no CORS grant, so a browser is refused
+    #[tokio::test]
+    async fn grpc_web_off_refuses_a_preflight() {
+        let server = GrpcService::new(ANY_PORT, GrpcLimits::default()).with_routes(unserved());
+        let bound = server.bind().await.expect("binds");
+        let bind = bound.local_addr().expect("bound");
+        let cancel = CancellationToken::new();
+        let serving = tokio::spawn(bound.run(cancel.clone()));
+
+        let preflight = preflight(bind).await;
+        assert!(
+            !preflight.contains("access-control-allow-origin"),
+            "no CORS grant with gRPC-web off, got:\n{preflight}",
+        );
+
+        cancel.cancel();
+        serving.await.expect("the serve task ran");
     }
 }
