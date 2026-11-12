@@ -243,7 +243,6 @@ mod tests {
     use tower::Service as _;
 
     use super::*;
-    use crate::overload::Signals;
 
     /// - `/open` + `GetMempoolStream` never end
     /// - `/data` = one frame then waits
@@ -306,7 +305,6 @@ mod tests {
     async fn the_origin_gate_blocks_and_otherwise_defers_to_the_limit() {
         let limits = crate::GrpcLimits {
             max_work_streams: NonZeroUsize::MIN,
-            adaptive_work_streams: false,
             ..crate::GrpcLimits::default()
         };
         let state = Arc::new(AdmissionState::new(&limits));
@@ -457,7 +455,7 @@ mod tests {
         let retry_after = HeaderValue::from_static("250");
         assert_eq!(refusal, (Code::Unavailable, "work stream limit reached", Some(&retry_after)));
 
-        let refusals = state.tick(Duration::from_secs(1), Signals::default());
+        let refusals = state.tick(Duration::from_secs(1));
         assert_eq!(refusals, 1, "the window's one refusal");
         let work = (state.work_limit(), state.held(Class::Work));
         assert_eq!(work, (256, 256), "refused below the 2048 ceiling, no slot of its own");

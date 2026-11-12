@@ -37,25 +37,9 @@ pub struct GrpcLimits {
     pub max_connection_age_grace: Duration,
     #[serde(rename = "max_connection_idle_secs", with = "serde_secs::zero_is_never")]
     pub max_connection_idle: Option<Duration>,
-    pub adaptive_work_streams: bool,
     pub trusted_proxies: TrustedProxies,
     #[serde(rename = "shutdown_grace_secs", with = "serde_secs::any")]
     pub drain_timeout: Duration,
-    pub overload: OverloadLimits,
-}
-
-/// When `/readyz` reports `Overloaded` (zingod's `[grpc.overload]`, usage.md "Overload"; 0 = off)
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields, default)]
-pub struct OverloadLimits {
-    pub cpu_pressure_percent: u8,
-    pub io_pressure_percent: u8,
-}
-
-impl Default for OverloadLimits {
-    fn default() -> Self {
-        Self { cpu_pressure_percent: 25, io_pressure_percent: 25 }
-    }
 }
 
 impl Default for GrpcLimits {
@@ -86,10 +70,8 @@ impl Default for GrpcLimits {
             // a whole `GetBlockRange` sync
             max_connection_age_grace: Duration::from_secs(600),
             max_connection_idle: Some(Duration::from_secs(30 * 60)),
-            adaptive_work_streams: true,
             trusted_proxies: TrustedProxies::default(),
             drain_timeout: Duration::from_secs(10),
-            overload: OverloadLimits::default(),
         }
     }
 }

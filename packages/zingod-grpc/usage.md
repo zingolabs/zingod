@@ -141,8 +141,9 @@ stream ending or its client disconnecting). What each `[grpc]` cap bounds:
 - **Origin gate** (`with_origin_gate(Arc<OriginGate>)`, read in `guard.rs`): a request's `Origin`
   → `block` (`PermissionDenied` before admission), else the normal admission path; `allow` only
   carves a host out of a blocked parent, never lifts a cap (`Origin` is client-settable). A
-  missing `Origin` (native clients) is default and uncounted. Markers are set operator-side (`zingod origin`) and swapped
-  whole each second; `verdict` folds an incoming host to the most-specific marker covering it.
+  missing `Origin` (native clients) is default and uncounted. Markers are set operator-side
+  (`zingod origin`) and swapped whole each second; `verdict` folds an incoming host to the
+  most-specific marker covering it.
 - **TLS** (`with_tls(Tls::load(files)?)` or `with_tls(Tls::self_signed(dir, listen)?)`): rustls
   with the aws-lc-rs provider, ALPN `h2` then `http/1.1` (load-balancer monitors connect over
   HTTPS/1.1). A missing or mismatched pair fails `Tls::load`, never plaintext. The files are
@@ -165,9 +166,9 @@ stream ending or its client disconnecting). What each `[grpc]` cap bounds:
   to the first DATA frame, then poll to poll), so a client's backpressure never counts. Each
   window (≥ 500 ms, ≥ 10 samples) sets `limit × clamp(1.5 × baseline / mean, 0.5, 1) + √limit`,
   smoothed at 0.2, between 32 and `max_work_streams`; a window that peaked below half the limit
-  changes nothing.
-- **Overload report.** `GrpcService::admission()` → `AdmissionState::overload()` gives the
-  first latched [overload](#overload) cause, moved once a minute.
+  changes nothing. Always on: the one authority on load.
+- **Overload report.** `GrpcService::admission()` → `AdmissionState::overloaded()`, the
+  [overload](#overload) latch, stepped once a minute.
 - **Trusted proxies.** A peer inside `trusted_proxies` must open with a PROXY header (v1 or v2,
   read under 5 s, ≤ 4 KiB), and the per-client cap counts the address it names; `LOCAL` /
   `UNKNOWN` count the proxy itself.
@@ -217,10 +218,9 @@ single-flight; every later ask is answered inline.
 
 ### Overload
 
-`AdmissionState::overload()` names the first cause latched (`/readyz`: `Overloaded: <cause>`);
-`AdmissionState::set_overload` changes the `[grpc.overload]` thresholds (`OverloadLimits`) live.
-Causes, signals and enter / exit times:
-[operators: overload](../../book/src/operators/maintenance.md#overload).
+`AdmissionState::overloaded()` latches on work refused at the adaptive limit, and nothing else:
+CPU or IO saturation reaches it as latency, which lowers the limit. Enter / exit rules:
+[operators: overload](../../book/src/operators/dos-protection.md#overload).
 
 ### Serving log
 

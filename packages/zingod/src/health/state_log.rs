@@ -109,8 +109,6 @@ pub(crate) fn spawn(status: Arc<DaemonStatus>) {
 
 #[cfg(test)]
 mod tests {
-    use zingod_grpc::OverloadCause;
-
     use super::*;
 
     /// One node's day, second by second where it matters:
@@ -125,8 +123,7 @@ mod tests {
         let (secs, mins) = (Duration::from_secs, |m: u64| Duration::from_secs(m * 60));
         let changed = |from, after| Some(Line::Changed { from, after });
         let not_ready = |elapsed| Some(Line::NotReady { elapsed });
-        let io = DaemonReason::Overloaded(OverloadCause::IoPressure);
-        let cpu = DaemonReason::Overloaded(OverloadCause::CpuPressure);
+        let overloaded = DaemonReason::Overloaded;
         let (pending, sent) = (DaemonReason::GoawayPending, DaemonReason::GoawaySent);
         let unvouched = DaemonReason::TipUnvouched;
 
@@ -140,13 +137,13 @@ mod tests {
             ("syncing: never repeats",             at(1_200), Syncing(None),       None),
             ("serving",                            at(1_200), Serving(None),       changed(Some("syncing"), Some(mins(10)))),
             ("serving: never repeats",             at(4_800), Serving(None),       None),
-            ("overloaded",                         at(4_800), Down(io),            changed(Some("serving"), Some(mins(60)))),
-            ("down: under REPEAT",                 at(4_830), Down(io),            None),
-            ("down: REPEAT after the change",      at(4_860), Down(io),            not_ready(mins(1))),
-            ("down: under REPEAT since the last",  at(4_890), Down(io),            None),
-            ("down: second REPEAT",                at(4_920), Down(io),            not_ready(mins(2))),
-            ("down, new reason = a change",        at(4_940), Down(cpu),           changed(Some("down"), Some(secs(140)))),
-            ("down: REPEAT after the new reason",  at(5_000), Down(cpu),           not_ready(secs(60))),
+            ("overloaded",                         at(4_800), Down(overloaded),    changed(Some("serving"), Some(mins(60)))),
+            ("down: under REPEAT",                 at(4_830), Down(overloaded),    None),
+            ("down: REPEAT after the change",      at(4_860), Down(overloaded),    not_ready(mins(1))),
+            ("down: under REPEAT since the last",  at(4_890), Down(overloaded),    None),
+            ("down: second REPEAT",                at(4_920), Down(overloaded),    not_ready(mins(2))),
+            ("down, new reason = a change",        at(4_940), Down(unvouched),     changed(Some("down"), Some(secs(140)))),
+            ("down: REPEAT after the new reason",  at(5_000), Down(unvouched),     not_ready(secs(60))),
             ("held",                               at(5_000), Held(pending),       changed(Some("down"), Some(mins(1)))),
             ("held, GOAWAYs sent = a change",      at(5_010), Held(sent),          changed(Some("held"), Some(secs(10)))),
             ("held: REPEAT",                       at(5_070), Held(sent),          not_ready(mins(1))),

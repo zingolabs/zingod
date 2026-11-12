@@ -13,7 +13,7 @@ use std::sync::{
 use serde::Serialize;
 use tokio::sync::watch;
 use zcash_protocol::consensus::NetworkType;
-use zingod_grpc::{Hold, OverloadCause, Retire};
+use zingod_grpc::{Hold, Retire};
 use zingod_grpc_snapshot::{GrpcSnapshot, GrpcSnapshots, ServingStatus};
 use zingod_persistence::DiskView;
 use zingod_primitives::metric::Metric;
@@ -68,8 +68,7 @@ const METRICS: &[Metric] = &[
     ),
     Metric::gauge(
         REASON,
-        "Why down, degraded or held, one-hot by reason (= /readyz's detail.reason; overloaded = \
-         its cause in zingod_grpc_overload_latched)",
+        "Why down, degraded or held, one-hot by reason (= /readyz's detail.reason)",
     ),
 ];
 
@@ -149,7 +148,7 @@ struct Catchup {
 
 /// Why `down`, `degraded` or `held`
 ///
-/// - `Overloaded` = `zingod_grpc::AdmissionState::overload`
+/// - `Overloaded` = `zingod_grpc::AdmissionState::overloaded`
 /// - `GoawaySent` = held past `hold_goaway_delay_secs`, every connection GOAWAY'd (`zingod hold`
 ///   waits for this)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -157,7 +156,7 @@ pub(crate) enum DaemonReason {
     NoValidatorReachable,
     TipUnvouched,
     RuntimeStalled,
-    Overloaded(OverloadCause),
+    Overloaded,
     GoawayPending,
     GoawaySent,
 }
@@ -178,7 +177,7 @@ impl DaemonReason {
             Self::NoValidatorReachable => "no_validator_reachable",
             Self::TipUnvouched => "tip_unvouched",
             Self::RuntimeStalled => "runtime_stalled",
-            Self::Overloaded(_) => "overloaded",
+            Self::Overloaded => "overloaded",
             Self::GoawayPending => "goaway_pending",
             Self::GoawaySent => "goaway_sent",
         }
@@ -189,7 +188,7 @@ impl DaemonReason {
             Self::NoValidatorReachable => "No trusted validator reachable",
             Self::TipUnvouched => "No trusted validator vouches for the tip",
             Self::RuntimeStalled => "Runtime stalled",
-            Self::Overloaded(cause) => cause.detail(),
+            Self::Overloaded => "Overloaded: refusing work",
             Self::GoawayPending => "GOAWAY pending",
             Self::GoawaySent => "GOAWAY sent",
         }
@@ -217,7 +216,7 @@ enum Stage {
 /// One snapshot's facts: `height` = served (else handed), `target` = [`GrpcSnapshot::sync_target`]
 struct Booted {
     serving_status: ServingStatus,
-    overload: Option<OverloadCause>,
+    overloaded: bool,
     height: Option<u32>,
     target: Option<u32>,
     rate: Option<f64>,
@@ -231,7 +230,7 @@ impl Booted {
         let now = now.map_or(0, |since| i64::try_from(since.as_secs()).unwrap_or(i64::MAX));
         Self {
             serving_status: grpc_snapshot.serving_status(now),
-            overload: sources.grpc_admission.overload(),
+            overloaded: sources.grpc_admission.overloaded(),
             height: served.or(sources.progress.handed()).map(u32::from),
             target: grpc_snapshot.sync_target().map(u32::from),
             rate: *sources.block_rate.borrow(),
@@ -253,8 +252,8 @@ fn readiness(hold: Hold, live: bool, stage: Stage) -> Readiness {
             Readiness::Down(DaemonReason::NoValidatorReachable)
         }
         (_, Stage::Starting { bootstrap, .. }) => Readiness::Provisioning(bootstrap),
-        (true, Stage::Booted(Booted { overload: Some(cause), .. })) => {
-            Readiness::Down(DaemonReason::Overloaded(cause))
+        (true, Stage::Booted(Booted { overloaded: true, .. })) => {
+            Readiness::Down(DaemonReason::Overloaded)
         }
         (true, Stage::Booted(booted)) => match booted.serving_status {
             ServingStatus::Down => Readiness::Down(DaemonReason::TipUnvouched),
@@ -490,20 +489,18 @@ mod tests {
     fn the_state_is_the_first_matching_rule_with_its_own_detail() {
         const LIVE: bool = true;
         const STALLED: bool = false;
-        let stage = |serving_status, overload, target: Option<u32>, rate: Option<f64>| {
+        let stage = |serving_status, overloaded, target: Option<u32>, rate: Option<f64>| {
             let (height, egress) =
                 (Some(3_514_194), Some(Egress { start: 1_790_000_400, mbps: 12.5 }));
-            Stage::Booted(Booted { serving_status, overload, height, target, rate, egress })
+            Stage::Booted(Booted { serving_status, overloaded, height, target, rate, egress })
         };
-        let booted = |serving_status, target, rate| stage(serving_status, None, target, rate);
-        let saturated = Some(OverloadCause::CpuPressure);
-        let overloaded =
-            |serving_status| stage(serving_status, saturated, Some(3_515_406), Some(6.2));
+        let booted = |serving_status, target, rate| stage(serving_status, false, target, rate);
+        let overloaded = |serving_status| stage(serving_status, true, Some(3_515_406), Some(6.2));
         let starting =
             |bootstrap, awaiting_validator| Stage::Starting { bootstrap, awaiting_validator };
         let because = |reason: &str, message: &str| serde_json::json!({ "reason": reason, "message": message });
         let stalled = because("runtime_stalled", "Runtime stalled");
-        let saturated = because("overloaded", "Overloaded: CPU pressure");
+        let saturated = because("overloaded", "Overloaded: refusing work");
         let unvouched = because("tip_unvouched", "No trusted validator vouches for the tip");
         let downloading = SnapshotProgress {
             phase: SnapshotPhase::Downloading,

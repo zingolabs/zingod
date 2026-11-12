@@ -20,7 +20,6 @@ mod memo;
 mod metrics;
 mod origin;
 mod overload;
-mod pressure;
 mod proxy_protocol;
 mod read_lanes;
 mod routes;
@@ -37,9 +36,8 @@ pub use crate::metrics::{sent_bytes_total, METRICS};
 pub use admission::AdmissionState;
 pub use health::Health;
 pub use lifetime::{Hold, Retire};
-pub use limits::{GrpcLimits, OverloadLimits};
+pub use limits::GrpcLimits;
 pub use origin::{OriginGate, OriginVerdict};
-pub use overload::OverloadCause;
 pub use proxy_protocol::TrustedProxies;
 
 pub use service::{RouteDeps, Routing};

@@ -39,15 +39,12 @@ const FLOOR: usize = 32;
 /// Starting limit (clamped to `FLOOR..=ceiling`): growth needs load, so a cold start admits a burst
 const INITIAL: usize = 256;
 
-/// `adaptive` off = the limit stays the ceiling
-///
-/// - `sample` = relaxed atomics only; the one sample that closes a window takes `gradient`
+/// `sample` = relaxed atomics only; the one sample that closes a window takes `gradient`
 #[derive(Debug)]
 pub(crate) struct Limiter {
     limit: AtomicUsize,
     floor: usize,
     ceiling: usize,
-    adaptive: bool,
     window: OpenWindow,
     gradient: Mutex<Gradient>,
 }
@@ -72,9 +69,9 @@ struct Gradient {
 }
 
 impl Limiter {
-    pub(crate) fn new(ceiling: usize, adaptive: bool) -> Self {
+    pub(crate) fn new(ceiling: usize) -> Self {
         let floor = FLOOR.min(ceiling);
-        let initial = if adaptive { INITIAL.clamp(floor, ceiling) } else { ceiling };
+        let initial = INITIAL.clamp(floor, ceiling);
         let window = OpenWindow {
             epoch: Instant::now(),
             opened_us: AtomicU64::new(0),
@@ -86,7 +83,6 @@ impl Limiter {
             limit: AtomicUsize::new(initial),
             floor,
             ceiling,
-            adaptive,
             window,
             gradient: Mutex::new(Gradient {
                 estimated_milli: initial.saturating_mul(MILLI),
@@ -101,9 +97,6 @@ impl Limiter {
 
     /// One message's production time, `in_flight` work streams as it landed
     pub(crate) fn sample(&self, took: Duration, in_flight: usize) {
-        if !self.adaptive {
-            return;
-        }
         let window = &self.window;
         let micros = |duration: Duration| u64::try_from(duration.as_micros()).unwrap_or(u64::MAX);
         window.sum_us.fetch_add(micros(took), Relaxed);
@@ -184,7 +177,7 @@ mod tests {
     /// ≈ +√limit / 5 per window
     #[tokio::test(start_paused = true)]
     async fn a_loaded_limiter_at_a_steady_rtt_grows_from_initial() {
-        let limiter = Limiter::new(CEILING, true);
+        let limiter = Limiter::new(CEILING);
         assert_eq!(limiter.limit(), INITIAL, "cold start");
 
         let grown = windows(&limiter, 20, 10, LOADED).await;
@@ -198,7 +191,7 @@ mod tests {
     /// Baseline 10 ms; floor = `FLOOR`
     #[tokio::test(start_paused = true)]
     async fn rtt_past_the_tolerance_shrinks_the_limit_to_the_floor_and_recovery_grows_it() {
-        let limiter = Limiter::new(CEILING, true);
+        let limiter = Limiter::new(CEILING);
         let before = *windows(&limiter, 20, 10, LOADED).await.last().expect("20 windows");
 
         let shrunk = windows(&limiter, 10, 40, LOADED).await;
@@ -215,20 +208,11 @@ mod tests {
     /// Peak in flight < limit / 2: a quiet node never inflates or deflates
     #[tokio::test(start_paused = true)]
     async fn an_app_limited_limiter_holds_its_limit_as_rtt_rises() {
-        let limiter = Limiter::new(CEILING, true);
+        let limiter = Limiter::new(CEILING);
         let quiet = windows(&limiter, 1, 10, 1).await;
 
         let slow = windows(&limiter, 20, 400, 1).await;
 
         assert_eq!(slow, vec![quiet[0]; 20], "1 in flight under {}", quiet[0]);
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn a_fixed_limiter_stays_at_its_ceiling() {
-        let fixed = Limiter::new(CEILING, false);
-
-        let limits = windows(&fixed, 20, 400, LOADED).await;
-
-        assert_eq!(limits, vec![CEILING; 20], "adaptive off, 40× RTT under load");
     }
 }

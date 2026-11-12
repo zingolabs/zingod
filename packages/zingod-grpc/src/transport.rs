@@ -27,8 +27,6 @@ use crate::connections::{ConnectionCaps, Reserved};
 use crate::guard::Guard;
 use crate::health::{Health, HealthRoute};
 use crate::lifetime::{Activity, Retire, RetireReason, Retirement};
-use crate::overload::Signals;
-use crate::pressure::{Pressure, Resource};
 use crate::proxy_protocol;
 use crate::service::{Dispatch, Routing};
 use crate::summary::{self, INTERVAL};
@@ -258,7 +256,6 @@ impl<S: ChainDataSource, V: PinnedView> BoundGrpcService<S, V> {
         if let Some(tls) = &server.tls {
             tokio::spawn(tls.reload(cancel.clone()).instrument(Span::current()));
         }
-        let (mut cpu, mut io) = (Pressure::new(Resource::Cpu), Pressure::new(Resource::Io));
         let shared = Arc::new(Shared {
             caps: ConnectionCaps::new(&server.limits),
             tls: server.tls.as_ref().map(crate::Tls::acceptor),
@@ -283,8 +280,7 @@ impl<S: ChainDataSource, V: PinnedView> BoundGrpcService<S, V> {
                 accepted = listener.accept() => accepted,
                 now = summaries.tick() => {
                     let elapsed = now.saturating_duration_since(window_opened);
-                    let signals = Signals { cpu: cpu.share(elapsed), io: io.share(elapsed) };
-                    let at_capacity = shared.admission.tick(elapsed, signals);
+                    let at_capacity = shared.admission.tick(elapsed);
                     summary::summarise(elapsed, shared.caps.held(), at_capacity);
                     window_opened = now;
                     continue;

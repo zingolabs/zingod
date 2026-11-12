@@ -10,7 +10,6 @@ use zingod_primitives::metric::Metric;
 use crate::admission::Class;
 use crate::lifetime::RetireReason;
 use crate::origin::OriginVerdict;
-use crate::overload::OverloadCause;
 use crate::read_lanes::Lane;
 use crate::service::{Method, Reply};
 use crate::summary;
@@ -30,7 +29,7 @@ const CONNECTIONS_REJECTED_TOTAL: &str = "zingod.grpc.connections_rejected_total
 const STALLED_CONNECTIONS_TOTAL: &str = "zingod.grpc.stalled_connections_total";
 const RETIRED_CONNECTIONS_TOTAL: &str = "zingod.grpc.retired_connections_total";
 const ADAPTIVE_STREAM_LIMIT: &str = "zingod.grpc.adaptive_stream_limit";
-const OVERLOAD_LATCHED: &str = "zingod.grpc.overload_latched";
+const OVERLOADED: &str = "zingod.grpc.overloaded";
 const ORIGIN_REQUESTS_TOTAL: &str = "zingod.grpc.origin_requests_total";
 
 /// Σ `SENT_BYTES_TOTAL` over methods, readable without the metrics recorder (zingod's egress)
@@ -117,12 +116,11 @@ pub const METRICS: &[Metric] = &[
     ),
     Metric::gauge(
         ADAPTIVE_STREAM_LIMIT,
-        "Work streams admitted at once now (latency-adaptive; max_work_streams when off)",
+        "Work streams admitted at once now (latency-adaptive, max_work_streams the ceiling)",
     ),
     Metric::gauge(
-        OVERLOAD_LATCHED,
-        "Overload causes latched, by cause (1 = latched, also while detection is off; /readyz names \
-         the first only while on)",
+        OVERLOADED,
+        "1 while admission has refused work persistently (= /readyz down, reason overloaded)",
     ),
     Metric::counter(
         ORIGIN_REQUESTS_TOTAL,
@@ -198,8 +196,8 @@ pub(crate) fn origin_request(verdict: OriginVerdict) {
 }
 
 /// Set at each overload window
-pub(crate) fn overload_latched(cause: OverloadCause, held: bool) {
-    metrics::gauge!(OVERLOAD_LATCHED, "cause" => cause.label()).set(f64::from(u8::from(held)));
+pub(crate) fn overloaded(latched: bool) {
+    metrics::gauge!(OVERLOADED).set(f64::from(u8::from(latched)));
 }
 
 pub(crate) fn disk_read_waited(lane: Lane, waited: Duration) {

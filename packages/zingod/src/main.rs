@@ -11,7 +11,7 @@ use clap::Parser;
 use tracing::{error, info, Instrument as _};
 
 use crate::cli::{Cli, Command};
-use crate::command::{hold, origin, overload, verify};
+use crate::command::{hold, origin, verify};
 use crate::config::load_config;
 use crate::error::IndexerError;
 use crate::health::{admin, notify, state_log, DaemonStatus};
@@ -41,11 +41,8 @@ fn main() -> ExitCode {
     let cli = Cli::parse();
 
     // logging → stdout by default (reserved for `verify`'s JSON, `hold`/`resume`'s and
-    // `overload`'s state)
-    if !matches!(
-        cli.command,
-        Command::Verify | Command::Hold(_) | Command::Overload { .. } | Command::Origin { .. }
-    ) {
+    // `origin`'s state)
+    if !matches!(cli.command, Command::Verify | Command::Hold(_) | Command::Origin { .. }) {
         if let Err(error) = logging::init() {
             eprintln!("Error: RUST_LOG: {error}");
             return ExitCode::from(2);
@@ -74,7 +71,6 @@ fn main() -> ExitCode {
             }
             Command::Verify => verify::run(&config),
             Command::Hold(action) => exit(hold::command(&config, action), 1),
-            Command::Overload { action } => exit(overload::command(&config, action), 1),
             Command::Origin { action } => exit(origin::command(&config, action), 1),
         }
     });

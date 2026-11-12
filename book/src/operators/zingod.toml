@@ -115,12 +115,10 @@ max_connections_per_ip = 128
 # HTTP/2 SETTINGS_MAX_CONCURRENT_STREAMS: every stream on one connection, of any method (as
 # lightwalletd's grpc-max-concurrent-streams)
 max_streams_per_connection = 100
-# work streams (every method but GetMempoolStream) across all connections; excess = UNAVAILABLE +
-# retry hint
+# ceiling of the adaptive work-stream limit (every method but GetMempoolStream, across all
+# connections; the limit follows measured latency); excess = UNAVAILABLE + retry hint
+# - https://zingolabs.github.io/zingod/operators/dos-protection.html#work-streams
 max_work_streams = 2048
-# work streams admitted at once follow measured latency, max_work_streams the ceiling: a saturated
-# node refuses new work within seconds (UNAVAILABLE + retry hint); false = always max_work_streams
-adaptive_work_streams = true
 # GetMempoolStream subscriptions (idle until the next block), counted apart from max_work_streams
 max_subscriptions = 4096
 # index reads in flight on the blocking pool, per lane; excess waits in its own lane
@@ -148,12 +146,6 @@ trusted_proxies = []
 # sent). Out of a load balancer's rotation first = `zingod hold`
 # - https://zingolabs.github.io/zingod/operators/maintenance.html#operator-hold
 shutdown_grace_secs = 10
-
-# When /readyz reports `Overloaded: <cause>` (0 = that cause off; `zingod overload` overrides live)
-[grpc.overload]
-# share of each minute zingod's cgroup waited (Linux PSI)
-cpu_pressure_percent = 25
-io_pressure_percent = 25
 
 # One block-fetch pipeline, shared by every index (defaults shown; all non-zero)
 [sync]

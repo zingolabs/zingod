@@ -16,8 +16,7 @@ use tonic::Status;
 
 use crate::adaptive::Limiter;
 use crate::metrics;
-use crate::overload::{Overload, OverloadCause, Signals};
-use crate::OverloadLimits;
+use crate::overload::Overload;
 
 /// Refusal retry hint, ms (held streams = wallet syncs: a slot frees well under a second)
 const PUSHBACK_MS: &str = "250";
@@ -53,14 +52,14 @@ impl AdmissionState {
             work: AtomicUsize::new(0),
             subscriptions: AtomicUsize::new(0),
             max_subscriptions: limits.max_subscriptions.get(),
-            limiter: Limiter::new(limits.max_work_streams.get(), limits.adaptive_work_streams),
-            overload: Overload::new(limits.overload.clone()),
+            limiter: Limiter::new(limits.max_work_streams.get()),
+            overload: Overload::default(),
         }
     }
 
-    /// First latched cause as of the last serving summary (rules: `overload.rs`)
-    pub fn overload(&self) -> Option<OverloadCause> {
-        self.overload.cause()
+    /// Refusing work persistently, as of the last serving summary (rules: `overload.rs`)
+    pub fn overloaded(&self) -> bool {
+        self.overload.latched()
     }
 
     #[cfg(test)]
@@ -68,16 +67,10 @@ impl AdmissionState {
         self.limiter.limit()
     }
 
-    /// The operator's overload thresholds + whether a latched cause is reported (next window on)
-    pub fn set_overload(&self, limits: OverloadLimits, detection: bool) {
-        self.overload.set(limits, detection);
-    }
-
-    /// Closes a serving summary's window (`elapsed` long, on its `signals`): its refusals, every
-    /// class
-    pub(crate) fn tick(&self, elapsed: Duration, signals: Signals) -> u64 {
+    /// Closes a serving summary's window (`elapsed` long): its refusals, every class
+    pub(crate) fn tick(&self, elapsed: Duration) -> u64 {
         metrics::adaptive_stream_limit(self.limiter.limit());
-        self.overload.tick(elapsed, signals)
+        self.overload.tick(elapsed)
     }
 
     /// `class`'s pool + its limit now (work: the adaptive one)
