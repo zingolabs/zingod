@@ -2,18 +2,15 @@
 
 Zingod protects itself with a fixed set of limits, checked in the order a request meets them. A
 request over a limit is refused immediately, never queued, so an overloaded node stays responsive
-and clients know at once to back off or try another server. The only exception is reading from
-disk, which waits for its turn (see [Disk reads](#disk-reads)).
+and clients know at once to back off or try another server.
 
 | Layer         | Bounds                                     | Settings (`[grpc]`)                                      | When exceeded                       |
 | ------------- | ------------------------------------------ | -------------------------------------------------------- | ----------------------------------- |
 | Connections   | open sockets, in total and per client      | `max_connections`, `max_connections_per_ip`              | connection closed at accept         |
 | Streams       | concurrent requests on one connection      | `max_streams_per_connection`                             | HTTP/2 refuses the stream           |
 | Work          | requests being served across all clients   | `max_work_streams` (ceiling of the adaptive limit)       | `UNAVAILABLE` with a retry hint     |
-| Subscriptions | open `GetMempoolStream` calls              | `max_subscriptions`                                      | `UNAVAILABLE` with a retry hint     |
-| Disk reads    | index reads in flight                      | `max_point_reads`, `max_range_reads`, `max_scan_reads`   | waits for a free slot               |
 | Request size  | request body and address rows              | `[serve] max_address_rows`                               | `RESOURCE_EXHAUSTED`                |
-| Progress      | clients that stop reading, idle streams    | `unread_timeout_secs`, `silent_timeout_secs`             | connection closed / stream ended    |
+| Progress      | clients that stop reading                  | `unread_timeout_secs`                                    | connection closed                   |
 | Origins       | browser sites you block                    | `zingod origin block`                                    | `PERMISSION_DENIED`                 |
 
 The defaults suit a public server on one machine. Every value is in the
@@ -40,8 +37,11 @@ streams get `max_connection_age_grace_secs` (10 minutes) to finish.
 ## Work streams
 
 Every method except `GetMempoolStream` takes a work slot for as long as it runs, including a long
-`GetBlockRange`. The number of slots is not fixed. Zingod measures how long it takes to produce
-each response message and adjusts the limit from that, using Netflix's Gradient2 algorithm:
+`GetBlockRange`. `GetMempoolStream` stays open until the next block and is idle most of that time,
+so it takes none; the connection limits bound it.
+
+The number of slots is not fixed. Zingod measures how long it takes to produce each response
+message and adjusts the limit from that, using Netflix's Gradient2 algorithm:
 
 - While the node is busy and response times stay steady, the limit grows slowly.
 - When response times rise past 1.5 times their 5-minute average, the limit shrinks within
@@ -51,8 +51,9 @@ each response message and adjusts the limit from that, using Netflix's Gradient2
 - Time spent waiting on a slow client does not count. Only time Zingod itself spends counts.
 
 CPU or disk saturation shows up as slower responses, so the limit tracks what the machine can
-actually serve. `max_work_streams` is a safety ceiling for costs that do not show up as latency,
-such as memory. You rarely need to change it.
+actually serve. Disk reads have no separate limit: each runs inside a work stream, so a slow disk
+lowers the work limit. `max_work_streams` is a safety ceiling for costs that do not show up as
+latency, such as memory. You rarely need to change it.
 
 A request over the limit gets `UNAVAILABLE` (`work stream limit reached`) with a
 `grpc-retry-pushback-ms: 250` header. Wallets retry after that delay, or move to another server.
@@ -63,27 +64,6 @@ more than the whole work limit, so one aggressive client can take every slot unt
 finish. On a public server, rate-limit per client address at your proxy or edge, or lower those
 two settings if your clients do not share addresses.
 
-## Subscriptions
-
-`GetMempoolStream` stays open until the next block and is idle most of that time, so it has its
-own limit, `max_subscriptions` (4096), instead of a work slot. Over the limit it gets
-`UNAVAILABLE` (`subscription limit reached`) with the same retry hint.
-
-## Disk reads
-
-Reads from the index files run on a separate thread pool, in three lanes so a slow read never
-delays a fast one:
-
-| Lane  | Reads                                     | Default |
-| ----- | ----------------------------------------- | ------- |
-| point | one block, tree state or subtree root list | 64      |
-| range | one window of a `GetBlockRange`            | 32      |
-| scan  | one address history                        | 4       |
-
-A read over its lane's limit waits for a free slot instead of failing. The wait is bounded,
-because every waiting read holds a work slot. Most answers for synced wallets (the tip, recent
-blocks, tree states, subtree roots) come from memory and never read the disk.
-
 ## Request size
 
 - A request body over 64 KiB is refused with `RESOURCE_EXHAUSTED`. `SendTransaction` allows
@@ -91,17 +71,11 @@ blocks, tree states, subtree roots) come from memory and never read the disk.
 - An address request that would walk more than `[serve] max_address_rows` (100,000) received
   transparent outputs, across all its addresses, is refused with `RESOURCE_EXHAUSTED`.
 
-## Slow and stuck clients
+## Slow clients
 
-Streams have no total time limit; a full sync takes as long as it takes. Two timeouts close
-streams that stop making progress:
-
-- `unread_timeout_secs` (300): the client stopped reading data Zingod has sent. The whole
-  connection is closed.
-- `silent_timeout_secs` (300): Zingod has had nothing to send. The stream ends with
-  `UNAVAILABLE`. `GetMempoolStream` is exempt.
-
-A client's own `grpc-timeout` is honoured as its deadline.
+Streams have no total time limit; a full sync takes as long as it takes. A client's own
+`grpc-timeout` is honoured as its deadline. A client that stops reading data Zingod has sent for
+`unread_timeout_secs` (300) has its whole connection closed.
 
 `/readyz` and `/status` on the gRPC listener never take a work slot. Each connection may send 10
 at once, refilling at one per second; beyond that it gets `429`.
@@ -144,7 +118,6 @@ overloaded, add capacity or spread clients across more nodes.
 | `zingod_grpc_adaptive_stream_limit`            | the work limit now                                      |
 | `zingod_grpc_active_streams`                   | work streams being served                               |
 | `zingod_grpc_admission_rejected_total`         | work requests refused at the limit                      |
-| `zingod_grpc_subscriptions_rejected_total`     | `GetMempoolStream` calls refused                        |
 | `zingod_grpc_connections_rejected_total`       | connections refused at a connection limit               |
 | `zingod_grpc_stalled_connections_total`        | connections closed by `unread_timeout_secs`             |
 | `zingod_grpc_overloaded`                       | 1 while the node reports `overloaded`                   |
@@ -152,4 +125,4 @@ overloaded, add capacity or spread clients across more nodes.
 A work limit that sits well below `max_work_streams` while refusals climb means the machine is the
 bottleneck. Refusals with the limit at its ceiling mean `max_work_streams` itself is the
 bottleneck. The once-a-minute [`Serving` line](monitoring.md#the-serving-line) summarises
-refusals and stalls in the log.
+refusals in the log.

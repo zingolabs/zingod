@@ -107,13 +107,8 @@ ts=… level=info target=zingod::telemetry::progress message="Syncing blocks" he
 
 ### The `Serving` line
 
-Once a minute, the gRPC server logs a `Serving` summary: `rps` (streams completed per second) and
-`conns` (open connections). It is logged at WARN if, during that minute, any request failed or
-was refused, took more than a second to its first response (`slow`), stalled (`stalled`), or a
-connection was refused at a limit (`conns_refused`). These fields appear only when non-zero.
-
-- `INTERNAL`, `UNKNOWN` and `DATA_LOSS` count as failures. `UNAVAILABLE` and
-  `RESOURCE_EXHAUSTED` count as refusals. Other codes are client errors, counted in
-  `zingod_grpc_requests_total{code}`.
-- The first failure of each minute is also logged as `Request failed` (ERROR), and the first
-  refusal not caused by capacity as `Request unavailable` (WARN).
+Once a minute, the gRPC server logs a `Serving` summary: `rps` (requests completed per second)
+and `conns` (open connections). If any request was refused (`UNAVAILABLE`, `RESOURCE_EXHAUSTED`)
+or failed (`INTERNAL`, `UNKNOWN`, `DATA_LOSS`) that minute, it is logged at WARN with `refused`
+and `failed` counts. The first failure of each minute is also logged as `Request failed` (ERROR)
+with its message. Everything else is in the [metrics](#metrics).
