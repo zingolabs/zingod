@@ -2,7 +2,7 @@
 //!
 //! - markers set operator-side (`zingod origin`, FQDN keys); this folds an incoming host to the
 //!   most-specific marker covering it (`allow good.evil.com` beats `block evil.com`)
-//! - block = refuse; allow = exempt from caps; default = per-IP floor
+//! - block = refuse; allow = carve-out from a parent block; either unblocked = normal admission
 //! - swapped whole each second by the poll loop (zingod's `command::origin::spawn`); the serve
 //!   path only reads
 

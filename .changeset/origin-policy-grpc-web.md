@@ -10,6 +10,7 @@ are unchanged.
 
 `zingod origin block|allow|reset <domain>` (and bare `zingod origin` to list) manage per-origin
 policy from markers under `<state_dir>/origins`, picked up by a running zingod within a second,
-no restart. `block` refuses an origin (`PermissionDenied`), `allow` exempts one from the
-work-stream limit, keyed by registrable domain (eTLD+1) with most-specific-marker-wins carve-outs.
+no restart. `block` refuses an origin and its subdomains (`PermissionDenied`), `allow` carves a
+subdomain back out (most-specific marker wins); every unblocked origin meets the same limits as
+any client.
 Browser load by verdict is the `zingod_grpc_origin_requests_total` metric.

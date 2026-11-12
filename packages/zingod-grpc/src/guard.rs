@@ -110,10 +110,9 @@ where
             let refusal = refusal.map(|inner| Guarded { inner, slot: None, ticket, close });
             return Box::pin(std::future::ready(Ok(refusal)));
         }
-        // allowed = never turned away; default = refused at the limit
+        // every unblocked origin = one admission path (Origin client-settable, never lifts a cap)
         let slot = match self.admission.admit(class) {
             Some(slot) => slot,
-            None if verdict == OriginVerdict::Allowed => self.admission.admit_exempt(class),
             None => {
                 (close.code, close.at_capacity) = (Some(Code::Unavailable), true);
                 let refusal = admission::refused(class);
@@ -301,10 +300,10 @@ mod tests {
         request
     }
 
-    /// With one work slot full, the gate decides the next request: a blocked origin is
-    /// `PermissionDenied`, an allowed origin is served past the limit, any other is refused
+    /// With one work slot full: blocked = `PermissionDenied` before admission; a carve-out under
+    /// the block or an unmarked origin = refused at the limit like any client
     #[tokio::test]
-    async fn the_origin_gate_blocks_exempts_and_otherwise_defers_to_the_limit() {
+    async fn the_origin_gate_blocks_and_otherwise_defers_to_the_limit() {
         let limits = crate::GrpcLimits {
             max_work_streams: NonZeroUsize::MIN,
             adaptive_work_streams: false,
@@ -312,7 +311,7 @@ mod tests {
         };
         let state = Arc::new(AdmissionState::new(&limits));
         let gate = OriginGate::new();
-        gate.set(["evil.com".to_owned()].into(), ["good.example".to_owned()].into());
+        gate.set(["evil.com".to_owned()].into(), ["good.evil.com".to_owned()].into());
         let mut guard =
             Guard::new(Answers, Arc::clone(&state), Arc::default(), Arc::default(), gate);
 
@@ -326,13 +325,14 @@ mod tests {
         };
         let blocked = guard.call(request_origin("/short", "https://evil.com")).await.expect("i");
         let allowed =
-            guard.call(request_origin("/short", "https://good.example")).await.expect("i");
+            guard.call(request_origin("/short", "https://good.evil.com")).await.expect("i");
         let other =
             guard.call(request_origin("/short", "https://unknown.example")).await.expect("i");
 
         assert_eq!(verdict(&blocked), Some(Code::PermissionDenied), "blocked origin refused");
-        assert_eq!(verdict(&allowed), None, "allowed origin served past the full limit");
+        assert_eq!(verdict(&allowed), Some(Code::Unavailable), "carve-out refused at the limit");
         assert_eq!(verdict(&other), Some(Code::Unavailable), "default origin refused at the limit");
+        assert_eq!(state.held(Class::Work), 1, "no refusal took a slot");
     }
 
     /// Guard → ticket wiring (stall timing itself: `stall.rs`)
