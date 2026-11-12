@@ -105,14 +105,6 @@ impl AdmissionState {
         metrics::stream_admitted(class);
         Some(Slot { class, admission: Arc::clone(self), busy_since: Some(Instant::now()) })
     }
-
-    /// A slot past the limit, never refused (an allowed origin's request, `guard.rs`)
-    pub(crate) fn admit_exempt(self: &Arc<Self>, class: Class) -> Slot {
-        self.pool(class).0.fetch_add(1, Ordering::Relaxed);
-        self.overload.admitted(class);
-        metrics::stream_admitted(class);
-        Slot { class, admission: Arc::clone(self), busy_since: Some(Instant::now()) }
-    }
 }
 
 /// One admitted stream's place in its pool, back on drop

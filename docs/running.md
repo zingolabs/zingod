@@ -355,17 +355,15 @@ Per-origin policy is operated with `zingod origin`, markers under `<state_dir>/o
 running zingod within a second (no restart), permanent until changed:
 
 - `zingod origin block <domain>` — refuse every request carrying the origin (`PermissionDenied`)
-- `zingod origin allow <domain>` — exempt it from the work-stream limit (never turned away); a
-  loaded gun (unbounded cost from that origin), for a vetted wallet only
-- `zingod origin reset <domain>` — back to the default per-IP floor
+- `zingod origin allow <domain>` — serve it even under a blocked parent domain
+- `zingod origin reset <domain>` — remove its marker
 - `zingod origin` — list every marker in force
 
 A domain is keyed by registrable domain (eTLD+1): `block evil.com` covers its subdomains, and a
-later `allow good.evil.com` carves one back out (most-specific marker wins). `Origin` is
-client-settable, so `allow` is friction relief for known wallets, not a security boundary — the
-per-IP connection cap and `max_streams_per_connection` still bound a spoofer. Browser load by
-verdict is `zingod_grpc_origin_requests_total{verdict}`; find a specific flooding origin in the
-edge/proxy logs, then block it.
+later `allow good.evil.com` carves one back out (most-specific marker wins). Every unblocked
+origin goes through the same limits as any client: `Origin` is client-settable, so it never
+lifts a cap. Browser load by verdict is `zingod_grpc_origin_requests_total{verdict}`; find a
+specific flooding origin in the edge/proxy logs, then block it.
 
 gRPC-web over HTTP/1.1 opens one connection per in-flight stream, each counting against
 `max_connections_per_ip`; serving it over TLS (h2) avoids that. Behind a proxy, the per-IP cap

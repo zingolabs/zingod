@@ -2,8 +2,8 @@
 //! `<serve.state_dir>/origins/`, one marker per domain (content `block` | `allow`)
 //!
 //! - block = every request carrying the origin refused
-//! - allow = exempt from caps, never turned away (a loaded gun: unbounded cost from that origin)
-//! - neither = default (per-IP floor)
+//! - allow = unblocked under a blocked parent domain (caps unchanged: Origin client-settable)
+//! - neither = default
 //! - permanent: only `reset` (or `block`/`allow` overwriting) changes a marker
 //! - running zingod reads them every second → the gRPC origin gate (a change = WARN)
 
@@ -25,7 +25,7 @@ const ALLOW: &str = "allow";
 pub(crate) enum Action {
     /// Refuse every request carrying this origin.
     Block { domain: String },
-    /// Exempt this origin from rate limits and overload refusals.
+    /// Serve this origin even under a blocked parent domain (limits apply as to any client).
     Allow { domain: String },
     /// Return this origin to the default policy.
     Reset { domain: String },

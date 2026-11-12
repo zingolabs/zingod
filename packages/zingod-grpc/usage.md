@@ -106,9 +106,9 @@ stream ending or its client disconnecting). What each `[grpc]` cap bounds:
   untouched (CORS short-circuits only an `OPTIONS` preflight). Off = no CORS, so a browser is
   refused. Per-origin policy is the gate below.
 - **Origin gate** (`with_origin_gate(Arc<OriginGate>)`, read in `guard.rs`): a request's `Origin`
-  → `block` (`PermissionDenied` before admission), `allow` (an exempt slot past the work-stream
-  limit, never refused) or default (the normal admission path). A missing `Origin` (native
-  clients) is default and uncounted. Markers are set operator-side (`zingod origin`) and swapped
+  → `block` (`PermissionDenied` before admission), else the normal admission path; `allow` only
+  carves a host out of a blocked parent, never lifts a cap (`Origin` is client-settable). A
+  missing `Origin` (native clients) is default and uncounted. Markers are set operator-side (`zingod origin`) and swapped
   whole each second; `verdict` folds an incoming host to the most-specific marker covering it.
 - **TLS** (`with_tls(Tls::load(files)?)` or `with_tls(Tls::self_signed(dir, listen)?)`): rustls
   with the aws-lc-rs provider, ALPN `h2` then `http/1.1` (load-balancer monitors connect over
