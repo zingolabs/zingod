@@ -15,7 +15,7 @@ hold, systemd, index snapshots, `verify`, network exposure):
 - `health/`: the state rules (`readiness`, pure), `/readyz`, `/status`, the admin listener,
   systemd notify and the state log.
 - `telemetry/`: logging, the metrics recorder, disk sampling, sync progress, gRPC egress.
-- `command/`: `verify`, `hold` / `resume`, `overload`.
+- `command/`: `verify`, `hold` / `resume`, `origin`.
 
 ## The admin listener
 
@@ -55,4 +55,4 @@ What zingod logs and what to watch: [operators: logging](../../book/src/operator
 `daemon.rs` tests the task policy (a task ending first cancels the rest and fails the daemon,
 a signal stops it clean, during boot too) and the whole pipeline over a `MockValidator` and gRPC
 on localhost (`a_reorg_serves_the_heavier_chain_and_every_rpc_agrees_on_the_served_tip`). The state
-rules, `/status`, systemd notify, hold, overload markers and `verify` test beside their code.
+rules, `/status`, systemd notify, hold, origin markers and `verify` test beside their code.

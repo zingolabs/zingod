@@ -190,7 +190,7 @@ append-only file stays unfragmented where a copy-on-write B-tree under random in
   interrupted commit or the zeroed reserve. Every read goes through `Pages`, sliced to the sealed
   length.
 - **Page faults on async threads.** A cold read can block for milliseconds. Callers run reads on the
-  blocking pool (`zingod-grpc`'s read lanes), and multi-record reads issue `MADV_WILLNEED` first.
+  blocking pool (`zingod-grpc`), and multi-record reads issue `MADV_WILLNEED` first.
   A batch of point lookups advises in two rounds, every candidate segment's fence page and then
   its record block, so the device sees the whole batch at once instead of two serial faults per
   segment per key. Point-lookup segments are mapped `MADV_RANDOM`, merge inputs

@@ -92,9 +92,9 @@ Every method is one `Method` variant in `service.rs`; its name is its wire name 
 metric label. A new RPC is:
 
 1. a `Method` variant,
-2. its arm in `Method::route`: its admission `Class` (`Work`, or `Subscription` for a stream
-   that idles between arrivals: own pool, never cut for silence, no latency recorded) and the
-   index whose view its handler reads (`None` = reads none, so never disabled),
+2. its arm in `Method::route`: its `Reply` and the index whose view its handler reads (`None` =
+   reads none, so never disabled); every method but `GetMempoolStream`
+   (`Method::is_subscription`: idle between arrivals) takes a work slot,
 3. its arm in `Wired::handle`, which hands the handler its decoded request (`wire::decode`, or
    `wire::decode_each` for a client stream); the handler returns `Result<Response<Body>, Status>`
    built with `wire::unary_response`, `wire::streamed_response` or `wire::streaming`, never by
@@ -121,7 +121,7 @@ accept loop is zingod's. Outermost first, per connection after the first three:
 ```text
 accept ─ total cap ─ PROXY header (trusted peers) ─ per-client cap ─ TLS ─ h2 / HTTP/1.1
   ─ health (resolves the RPC) ─ CORS + gRPC-web (with_grpc_web) ─ guard (metrics, admission,
-    origin gate, stall watch) ─ dispatch (grpc-timeout, silence, request body) ─ handler
+    origin gate, stall watch) ─ dispatch (grpc-timeout, request body) ─ handler
 ```
 
 The guard (`guard.rs`) wraps each response body once: the body owns its admission slot, its
@@ -141,8 +141,9 @@ stream ending or its client disconnecting). What each `[grpc]` cap bounds:
 - **Origin gate** (`with_origin_gate(Arc<OriginGate>)`, read in `guard.rs`): a request's `Origin`
   → `block` (`PermissionDenied` before admission), else the normal admission path; `allow` only
   carves a host out of a blocked parent, never lifts a cap (`Origin` is client-settable). A
-  missing `Origin` (native clients) is default and uncounted. Markers are set operator-side (`zingod origin`) and swapped
-  whole each second; `verdict` folds an incoming host to the most-specific marker covering it.
+  missing `Origin` (native clients) is default and uncounted. Markers are set operator-side
+  (`zingod origin`) and swapped whole each second; `verdict` folds an incoming host to the
+  most-specific marker covering it.
 - **TLS** (`with_tls(Tls::load(files)?)` or `with_tls(Tls::self_signed(dir, listen)?)`): rustls
   with the aws-lc-rs provider, ALPN `h2` then `http/1.1` (load-balancer monitors connect over
   HTTPS/1.1). A missing or mismatched pair fails `Tls::load`, never plaintext. The files are
@@ -165,9 +166,9 @@ stream ending or its client disconnecting). What each `[grpc]` cap bounds:
   to the first DATA frame, then poll to poll), so a client's backpressure never counts. Each
   window (≥ 500 ms, ≥ 10 samples) sets `limit × clamp(1.5 × baseline / mean, 0.5, 1) + √limit`,
   smoothed at 0.2, between 32 and `max_work_streams`; a window that peaked below half the limit
-  changes nothing.
-- **Overload report.** `GrpcService::admission()` → `AdmissionState::overload()` gives the
-  first latched [overload](#overload) cause, moved once a minute.
+  changes nothing. Always on: the one authority on load.
+- **Overload report.** `GrpcService::admission()` → `AdmissionState::overloaded()`, the
+  [overload](#overload) latch, stepped once a minute.
 - **Trusted proxies.** A peer inside `trusted_proxies` must open with a PROXY header (v1 or v2,
   read under 5 s, ≤ 4 KiB), and the per-client cap counts the address it names; `LOCAL` /
   `UNKNOWN` count the proxy itself.
@@ -181,21 +182,18 @@ stream ending or its client disconnecting). What each `[grpc]` cap bounds:
 - **Unread.** A body that handed hyper a frame and is not polled again (flow control stalled on
   a client that stopped reading) owes that frame. Once any stream on a connection has owed for
   `unread_timeout`, the connection is closed. An idle stream (a quiet mempool subscription, a
-  read waiting for its lane) never owes.
-- **Silence.** A handler or stream body with nothing to send for `silent_timeout` ends with
-  `UNAVAILABLE`; the clock restarts at every frame. `GetMempoolStream` is exempt.
+  pending read) never owes.
 - **Frames.** Records ready back to back are joined into DATA chunks of up to 16 KiB, and a
   record of 16 KiB or more passes through uncopied. One small frame per record makes an h2
   0.4.16+ client that reads late answer `GOAWAY too_many_data_frames` (lightwalletd #593).
 - `method` and `code` metric labels come from fixed sets, so a misbehaving client cannot grow
   the series count.
 
-### Read lanes
+### Disk reads
 
-`ReadLanes` runs every read that touches index files on the blocking pool, under a permit of its
-lane, never on a runtime worker: **point** (block, tree state, subtree roots), **range** (each
-`GetBlockRange` window below the NFS layer), **scan** (address UTXOs, balances, transactions). A
-heavy scan queues behind the other scans, never behind or ahead of a tip read.
+Every read that touches index files runs on the blocking pool (`routes::blocking`), never on a
+runtime worker. No separate cap: each read sits inside a work stream, so the adaptive limit
+bounds them, and a slow disk lowers it.
 
 ### Answered without a read
 
@@ -212,15 +210,14 @@ The answers every synced wallet asks for right after each block never queue:
 
 The tree-state memos (`memo::PerView`) are keyed on the NFS publish (the `NfsPublication` `Arc`),
 not the `GrpcSnapshot`, which moves on every chain-view fold. A new publish starts empty, so
-there is no invalidation rule. The first ask per publish computes on the point lane,
+there is no invalidation rule. The first ask per publish computes on the blocking pool,
 single-flight; every later ask is answered inline.
 
 ### Overload
 
-`AdmissionState::overload()` names the first cause latched (`/readyz`: `Overloaded: <cause>`);
-`AdmissionState::set_overload` changes the `[grpc.overload]` thresholds (`OverloadLimits`) live.
-Causes, signals and enter / exit times:
-[operators: overload](../../book/src/operators/maintenance.md#overload).
+`AdmissionState::overloaded()` latches on work refused at the adaptive limit, and nothing else:
+CPU or IO saturation reaches it as latency, which lowers the limit. Enter / exit rules:
+[operators: overload](../../book/src/operators/dos-protection.md#overload).
 
 ### Serving log
 

@@ -1,10 +1,10 @@
-//! Stream admission: a [`Slot`], or `UNAVAILABLE` + pushback, never a queue
+//! Work-stream admission: a [`Slot`] under the adaptive limit, or `UNAVAILABLE` + pushback, never a
+//! queue
 //!
 //! - Slot owned by the response *body* (`guard.rs`), not the handler (released at handler return
 //!   = unbounded streams)
-//! - Two pools by [`Class`]: a subscription idles for a block, so it never holds a work slot (one
-//!   mempool stream per wallet would otherwise fill `max_work_streams` with idlers)
-//! - Work held exactly to the adaptive limit (`adaptive.rs`), fed each message's production time
+//! - `GetMempoolStream` takes none (idle until the next block: bounded by the connection caps)
+//! - each slot feeds its messages' production time to the limiter (`adaptive.rs`)
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -16,8 +16,7 @@ use tonic::Status;
 
 use crate::adaptive::Limiter;
 use crate::metrics;
-use crate::overload::{Overload, OverloadCause, Signals};
-use crate::OverloadLimits;
+use crate::overload::Overload;
 
 /// Refusal retry hint, ms (held streams = wallet syncs: a slot frees well under a second)
 const PUSHBACK_MS: &str = "250";
@@ -25,24 +24,11 @@ const PUSHBACK_MS: &str = "250";
 /// gRPC's own "come back later" header (grpc-core)
 const PUSHBACK_HEADER: &str = "grpc-retry-pushback-ms";
 
-/// Cap a request counts against (each method's in [`Method::route`](crate::service::Method::route),
-/// unknown path = `Work`)
-///
-/// - `Work` = unary, ranges, scans
-/// - `Subscription` = open until the next block, idle between arrivals
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Class {
-    Work,
-    Subscription,
-}
-
-/// The two admission pools, the adaptive work limit and their outcomes, shared by every connection
+/// Work streams held, the adaptive limit and its outcomes, shared by every connection
 /// ([`GrpcService::admission`](crate::GrpcService::admission) = its readiness view)
 #[derive(Debug)]
 pub struct AdmissionState {
-    work: AtomicUsize,
-    subscriptions: AtomicUsize,
-    max_subscriptions: usize,
+    held: AtomicUsize,
     limiter: Limiter,
     overload: Overload,
 }
@@ -50,17 +36,15 @@ pub struct AdmissionState {
 impl AdmissionState {
     pub(crate) fn new(limits: &crate::GrpcLimits) -> Self {
         Self {
-            work: AtomicUsize::new(0),
-            subscriptions: AtomicUsize::new(0),
-            max_subscriptions: limits.max_subscriptions.get(),
-            limiter: Limiter::new(limits.max_work_streams.get(), limits.adaptive_work_streams),
-            overload: Overload::new(limits.overload.clone()),
+            held: AtomicUsize::new(0),
+            limiter: Limiter::new(limits.max_work_streams.get()),
+            overload: Overload::default(),
         }
     }
 
-    /// First latched cause as of the last serving summary (rules: `overload.rs`)
-    pub fn overload(&self) -> Option<OverloadCause> {
-        self.overload.cause()
+    /// Refusing work persistently, as of the last serving summary (rules: `overload.rs`)
+    pub fn overloaded(&self) -> bool {
+        self.overload.latched()
     }
 
     #[cfg(test)]
@@ -68,51 +52,36 @@ impl AdmissionState {
         self.limiter.limit()
     }
 
-    /// The operator's overload thresholds + whether a latched cause is reported (next window on)
-    pub fn set_overload(&self, limits: OverloadLimits, detection: bool) {
-        self.overload.set(limits, detection);
-    }
-
-    /// Closes a serving summary's window (`elapsed` long, on its `signals`): its refusals, every
-    /// class
-    pub(crate) fn tick(&self, elapsed: Duration, signals: Signals) -> u64 {
+    /// Closes a serving summary's window (`elapsed` long)
+    pub(crate) fn tick(&self, elapsed: Duration) {
         metrics::adaptive_stream_limit(self.limiter.limit());
-        self.overload.tick(elapsed, signals)
+        self.overload.tick(elapsed);
     }
 
-    /// `class`'s pool + its limit now (work: the adaptive one)
-    fn pool(&self, class: Class) -> (&AtomicUsize, usize) {
-        match class {
-            Class::Work => (&self.work, self.limiter.limit()),
-            Class::Subscription => (&self.subscriptions, self.max_subscriptions),
-        }
+    pub(crate) fn held(&self) -> usize {
+        self.held.load(Ordering::Relaxed)
     }
 
-    /// Streams of `class` held now
-    pub(crate) fn held(&self, class: Class) -> usize {
-        self.pool(class).0.load(Ordering::Relaxed)
-    }
-
-    /// A slot, or `None` = refused at once at the class's limit
-    pub(crate) fn admit(self: &Arc<Self>, class: Class) -> Option<Slot> {
-        let (held, limit) = self.pool(class);
+    /// A slot, or `None` = refused at once at the limit
+    pub(crate) fn admit(self: &Arc<Self>) -> Option<Slot> {
+        let limit = self.limiter.limit();
         let taken = |held: usize| (held < limit).then_some(held + 1);
-        if held.fetch_update(Ordering::Relaxed, Ordering::Relaxed, taken).is_err() {
-            self.overload.refused(class);
+        if self.held.fetch_update(Ordering::Relaxed, Ordering::Relaxed, taken).is_err() {
+            self.overload.refused();
+            metrics::stream_rejected();
             return None;
         }
-        self.overload.admitted(class);
-        metrics::stream_admitted(class);
-        Some(Slot { class, admission: Arc::clone(self), busy_since: Some(Instant::now()) })
+        self.overload.admitted();
+        metrics::stream_admitted();
+        Some(Slot { admission: Arc::clone(self), busy_since: Some(Instant::now()) })
     }
 }
 
-/// One admitted stream's place in its pool, back on drop
+/// One admitted stream's place, back on drop
 ///
 /// - `busy_since` = producing its next message since (`None` = handed one, not polled since)
 #[derive(Debug)]
 pub(crate) struct Slot {
-    class: Class,
     admission: Arc<AdmissionState>,
     busy_since: Option<Instant>,
 }
@@ -122,30 +91,24 @@ impl Slot {
         self.busy_since.get_or_insert_with(Instant::now);
     }
 
-    /// A data frame out: one work message's production time to the limiter
+    /// A data frame out: its production time to the limiter
     pub(crate) fn handed(&mut self) {
-        let since = self.busy_since.take();
-        if let (Class::Work, Some(since)) = (self.class, since) {
-            let in_flight = self.admission.held(Class::Work);
-            self.admission.limiter.sample(since.elapsed(), in_flight);
+        if let Some(since) = self.busy_since.take() {
+            self.admission.limiter.sample(since.elapsed(), self.admission.held());
         }
     }
 }
 
 impl Drop for Slot {
     fn drop(&mut self) {
-        self.admission.pool(self.class).0.fetch_sub(1, Ordering::Relaxed);
-        metrics::stream_released(self.class);
+        self.admission.held.fetch_sub(1, Ordering::Relaxed);
+        metrics::stream_released();
     }
 }
 
 /// `UNAVAILABLE` + pushback hint, before any handler runs
-pub(crate) fn refused(class: Class) -> Response<tonic::body::Body> {
-    let message = match class {
-        Class::Work => "work stream limit reached",
-        Class::Subscription => "subscription limit reached",
-    };
-    let mut response = Status::unavailable(message).into_http();
+pub(crate) fn refused() -> Response<tonic::body::Body> {
+    let mut response = Status::unavailable("work stream limit reached").into_http();
     response.headers_mut().insert(PUSHBACK_HEADER, HeaderValue::from_static(PUSHBACK_MS));
     response
 }

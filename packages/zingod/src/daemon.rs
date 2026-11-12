@@ -49,7 +49,7 @@ use zingod_source::{BlockchainInfo, ChainDataSource};
 use zingod_sync::{FinalizedFollower, IndexKind};
 use zingod_traffic::{Push, TrafficBalancer, TrustedValidatorId};
 
-use crate::command::{origin, overload};
+use crate::command::origin;
 use crate::config::{DaemonConfig, IndexConfig, ServeTls, TrustedValidatorConfig, ValidatorClient};
 use crate::error::IndexerError;
 use crate::health::{admin, DaemonStatus, Sources};
@@ -159,7 +159,6 @@ async fn listen<S: ChainDataSource>(
         server = server.with_tls(tls);
     }
     let serving = Serving { routing: server.routing(), admission: server.admission() };
-    overload::spawn(server.admission(), &config.serve.state_dir, config.grpc.overload.clone());
     origin::spawn(origin_gate, &config.serve.state_dir);
     let server = server.bind().await?;
     span.in_scope(|| info!(%endpoint, network, tls = mode, "Listening"));

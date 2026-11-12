@@ -1,11 +1,10 @@
-//! One-shot subcommands: `verify`, `hold` / `resume`, `overload`
+//! One-shot subcommands: `verify`, `hold` / `resume`, `origin`
 //!
-//! - hold + overload = marker files in `[serve] state_dir` (CLI writes, running zingod polls each
+//! - hold + origin = marker files in `[serve] state_dir` (CLI writes, running zingod polls each
 //!   second: both halves of each contract live in its file)
 
 pub(super) mod hold;
 pub(super) mod origin;
-pub(super) mod overload;
 pub(super) mod verify;
 
 use std::io;

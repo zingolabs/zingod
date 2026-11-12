@@ -14,9 +14,10 @@
 - [Quick start](operators/quick-start.md)
 - [Configuration](operators/configuration.md)
 - [First sync](operators/first-sync.md)
+- [Network exposure](operators/network.md)
+- [DoS protection](operators/dos-protection.md)
 - [Monitoring](operators/monitoring.md)
 - [Maintenance](operators/maintenance.md)
-- [Network exposure](operators/network.md)
 - [Docker](operators/docker.md)
 - [Migrating from Zaino](operators/migrating-from-zaino.md)
 

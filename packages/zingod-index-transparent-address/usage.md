@@ -100,7 +100,7 @@ let touched = reader.transactions(&address, start, end)?; // Vec<TxId>, (height,
   request fails with `ServeError::TooManyRows`. It never returns a short list or
   a partial balance.
 - Every method is synchronous and reads mmapped pages, so a transport runs it
-  off its async workers (`zingod-grpc`'s scan lane).
+  off its async workers (`zingod-grpc`'s blocking pool).
 - Blocks above the durable tip are `zingod-nfs` layers keyed exactly like the maps. An
   `NfsPublication`'s reader merges them over the durable store by key.
 

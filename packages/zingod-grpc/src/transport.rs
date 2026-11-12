@@ -27,8 +27,6 @@ use crate::connections::{ConnectionCaps, Reserved};
 use crate::guard::Guard;
 use crate::health::{Health, HealthRoute};
 use crate::lifetime::{Activity, Retire, RetireReason, Retirement};
-use crate::overload::Signals;
-use crate::pressure::{Pressure, Resource};
 use crate::proxy_protocol;
 use crate::service::{Dispatch, Routing};
 use crate::summary::{self, INTERVAL};
@@ -87,7 +85,7 @@ pub enum GrpcServeError {
 impl<S: ChainDataSource, V: PinnedView> GrpcService<S, V> {
     /// Unrouted: health answered, every method `UNAVAILABLE` until [`Routing::route`]
     pub fn new(bind: SocketAddr, limits: GrpcLimits) -> Self {
-        let dispatch = Dispatch::new(&limits);
+        let dispatch = Dispatch::new();
         let admission = Arc::new(AdmissionState::new(&limits));
         let retire = Retire::default();
         let origin_gate = crate::OriginGate::new();
@@ -258,7 +256,6 @@ impl<S: ChainDataSource, V: PinnedView> BoundGrpcService<S, V> {
         if let Some(tls) = &server.tls {
             tokio::spawn(tls.reload(cancel.clone()).instrument(Span::current()));
         }
-        let (mut cpu, mut io) = (Pressure::new(Resource::Cpu), Pressure::new(Resource::Io));
         let shared = Arc::new(Shared {
             caps: ConnectionCaps::new(&server.limits),
             tls: server.tls.as_ref().map(crate::Tls::acceptor),
@@ -283,9 +280,8 @@ impl<S: ChainDataSource, V: PinnedView> BoundGrpcService<S, V> {
                 accepted = listener.accept() => accepted,
                 now = summaries.tick() => {
                     let elapsed = now.saturating_duration_since(window_opened);
-                    let signals = Signals { cpu: cpu.share(elapsed), io: io.share(elapsed) };
-                    let at_capacity = shared.admission.tick(elapsed, signals);
-                    summary::summarise(elapsed, shared.caps.held(), at_capacity);
+                    shared.admission.tick(elapsed);
+                    summary::summarise(elapsed, shared.caps.held());
                     window_opened = now;
                     continue;
                 }
@@ -951,11 +947,7 @@ mod tests {
 
         let healthy = ("200".to_owned(), r#"{"state":"serving","detail":null}"#.to_owned());
         assert_eq!(readyz().await, healthy, "ALPN http/1.1 /readyz, unrouted");
-        assert_eq!(
-            admission.held(crate::admission::Class::Work),
-            0,
-            "a monitor's /readyz never holds a work slot"
-        );
+        assert_eq!(admission.held(), 0, "a monitor's /readyz never holds a work slot");
         let starting = (Code::Unavailable, crate::service::STARTING.to_owned());
         assert_eq!(lightd_info().await, starting, "ALPN h2 → the gRPC stack, unrouted");
 

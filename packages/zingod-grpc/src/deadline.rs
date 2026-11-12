@@ -1,12 +1,8 @@
-//! Time bounds on one request: the client's `grpc-timeout`, and a silence bound, never a total cap
+//! Client's `grpc-timeout` = a request's only time bound (never a total cap)
 //!
-//! - deadline = `grpc-timeout` at arrival: past it, a pending handler = `DEADLINE_EXCEEDED`, a
-//!   stream ends in `DEADLINE_EXCEEDED` trailers
-//! - silence = nothing to send for `silent_timeout` while hyper waits on the handler or the body
-//!   → `UNAVAILABLE` (retry)
-//! - client-side twin = `stall.rs` (`unread_timeout` → connection closed)
-//! - `GetMempoolStream` exempt (silent until the next block by design)
-//! - a long stream that keeps delivering lives as long as the client wants (Z#1537)
+//! - past it: pending handler = `DEADLINE_EXCEEDED`, a stream ends in `DEADLINE_EXCEEDED` trailers
+//! - a stream that keeps delivering lives as long as the client wants (Z#1537)
+//! - client stopped reading = `stall.rs` (`unread_timeout` → connection closed)
 
 use std::future::Future;
 use std::pin::Pin;
@@ -42,80 +38,36 @@ fn requested(headers: &HeaderMap) -> Option<Duration> {
     }
 }
 
-/// One request's bounds, fixed at arrival (`silent_limit` = `None`: never cut for silence)
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct Bounds {
-    deadline: Option<Instant>,
-    silent_limit: Option<Duration>,
+/// `headers`' deadline, fixed at arrival
+pub(crate) fn of(headers: &HeaderMap) -> Option<Instant> {
+    requested(headers).map(|timeout| Instant::now() + timeout)
 }
 
-impl Bounds {
-    pub(crate) fn of(headers: &HeaderMap, silent_limit: Option<Duration>) -> Self {
-        Self { deadline: requested(headers).map(|timeout| Instant::now() + timeout), silent_limit }
+/// `answer` cut at `deadline`, its stream body too (`None` = never cut)
+pub(crate) async fn apply(
+    deadline: Option<Instant>,
+    answer: impl Future<Output = Response<Body>>,
+) -> Response<Body> {
+    let Some(deadline) = deadline else { return answer.await };
+    let Ok(response) = tokio::time::timeout_at(deadline, answer).await else {
+        return expired().into_http();
+    };
+    // grpc-status in the headers = complete (unary or a refusal): nothing left to bound
+    if response.headers().contains_key("grpc-status") {
+        return response;
     }
-
-    /// `answer` cut at the first bound
-    ///
-    /// - stream's body (status in trailers) bounded the same
-    pub(crate) async fn apply(
-        self,
-        answer: impl Future<Output = Response<Body>>,
-    ) -> Response<Body> {
-        let first_message = self.silent_limit.map(|limit| Instant::now() + limit);
-        let cut = match (self.deadline, first_message) {
-            (Some(deadline), Some(silent)) => Some(deadline.min(silent)),
-            (deadline, silent) => deadline.or(silent),
-        };
-        let response = match cut {
-            Some(at) => match tokio::time::timeout_at(at, answer).await {
-                Ok(response) => response,
-                Err(_) => return self.cut_at(at).into_http(),
-            },
-            None => answer.await,
-        };
-        // grpc-status in the headers = complete (unary or a refusal): nothing left to bound
-        if response.headers().contains_key("grpc-status") {
-            return response;
-        }
-        let deadline = self.deadline.map(|at| Box::pin(tokio::time::sleep_until(at)));
-        let (silent_limit, silent_timer) = (self.silent_limit, None);
-        response.map(|inner| {
-            Body::new(Bounded { inner: Some(inner), deadline, silent_limit, silent_timer })
-        })
-    }
-
-    /// Why a cut at `at` ended the request
-    fn cut_at(&self, at: Instant) -> Status {
-        match (self.deadline == Some(at), self.silent_limit) {
-            (false, Some(limit)) => silenced(limit),
-            _ => expired(),
-        }
-    }
+    let deadline = Box::pin(tokio::time::sleep_until(deadline));
+    response.map(|inner| Body::new(Bounded { inner: Some(inner), deadline }))
 }
 
 fn expired() -> Status {
     Status::deadline_exceeded("grpc-timeout passed")
 }
 
-fn silenced(silent: Duration) -> Status {
-    Status::unavailable(format!("nothing to send for {silent:?}"))
-}
-
-/// A stream body under its [`Bounds`] (`inner` dropped at a cut: its reads and permits go with it)
-///
-/// - `silent_timer` runs from the first `Pending` since the last frame, never while hyper holds one
+/// Stream body under its deadline (`inner` dropped at the cut: its slot goes with it)
 struct Bounded {
     inner: Option<Body>,
-    deadline: Option<Pin<Box<Sleep>>>,
-    silent_limit: Option<Duration>,
-    silent_timer: Option<Pin<Box<Sleep>>>,
-}
-
-impl Bounded {
-    fn cut(&mut self, status: Status) -> Poll<Option<Result<Frame<Bytes>, Status>>> {
-        self.inner = None;
-        Poll::Ready(Some(Ok(Frame::trailers(trailers(&status)))))
-    }
+    deadline: Pin<Box<Sleep>>,
 }
 
 impl http_body::Body for Bounded {
@@ -128,36 +80,22 @@ impl http_body::Body for Bounded {
     ) -> Poll<Option<Result<Frame<Bytes>, Status>>> {
         let this = self.get_mut();
         let Some(inner) = this.inner.as_mut() else { return Poll::Ready(None) };
-        if this.deadline.as_ref().is_some_and(|deadline| deadline.is_elapsed()) {
-            return this.cut(expired());
-        }
-        match Pin::new(inner).poll_frame(cx) {
-            Poll::Ready(Some(Ok(frame))) => {
-                this.silent_timer = None;
-                if frame.is_trailers() {
-                    this.inner = None;
-                }
+        let polled = match this.deadline.is_elapsed() {
+            true => None,
+            false => Some(Pin::new(inner).poll_frame(cx)),
+        };
+        match polled {
+            Some(Poll::Ready(Some(Ok(frame)))) if !frame.is_trailers() => {
                 Poll::Ready(Some(Ok(frame)))
             }
-            Poll::Ready(other) => {
+            Some(Poll::Ready(done)) => {
                 this.inner = None;
-                Poll::Ready(other)
+                Poll::Ready(done)
             }
-            Poll::Pending => {
-                if let Some(deadline) = this.deadline.as_mut() {
-                    if deadline.as_mut().poll(cx).is_ready() {
-                        return this.cut(expired());
-                    }
-                }
-                if let Some(limit) = this.silent_limit {
-                    let timer = this
-                        .silent_timer
-                        .get_or_insert_with(|| Box::pin(tokio::time::sleep(limit)));
-                    if timer.as_mut().poll(cx).is_ready() {
-                        return this.cut(silenced(limit));
-                    }
-                }
-                Poll::Pending
+            Some(Poll::Pending) if this.deadline.as_mut().poll(cx).is_pending() => Poll::Pending,
+            None | Some(Poll::Pending) => {
+                this.inner = None;
+                Poll::Ready(Some(Ok(Frame::trailers(trailers(&expired())))))
             }
         }
     }
@@ -174,7 +112,7 @@ mod tests {
     use tokio::time::Instant;
     use tonic::{body::Body, Status};
 
-    use super::{requested, Bounds};
+    use super::requested;
     use crate::wire::trailers;
 
     fn timeout(value: &'static str) -> HeaderMap {
@@ -229,17 +167,17 @@ mod tests {
         frames
     }
 
-    /// `Stream`: `count` records, one every `period`, then `OK` trailers (`silent` = pending)
+    /// `Stream`: `count` records, one every `period`, then `OK` trailers
     #[derive(Clone, Copy, Debug)]
     enum Handler {
         Pending,
-        Stream { count: u64, period: Duration, silent: bool },
+        Stream { count: u64, period: Duration },
     }
 
     async fn handle(handler: Handler) -> Response<Body> {
         use std::cmp::Ordering::{Equal, Greater, Less};
 
-        let Handler::Stream { count, period, silent } = handler else {
+        let Handler::Stream { count, period } = handler else {
             return std::future::pending().await;
         };
         let frames = futures::stream::unfold(0, move |sent: u64| async move {
@@ -248,7 +186,6 @@ mod tests {
                     tokio::time::sleep(period).await;
                     Frame::data(Bytes::from_static(b"\0\0\0\0\0"))
                 }
-                Equal if silent => return std::future::pending().await,
                 Equal => Frame::trailers(trailers(&Status::ok(""))),
                 Greater => return None,
             };
@@ -257,38 +194,31 @@ mod tests {
         Response::new(Body::new(StreamBody::new(Box::pin(frames))))
     }
 
-    /// Z#1537 (paused clock): no total cap, only the client's deadline or the silence bound
+    /// Z#1537 (paused clock): no total cap, no silence cap, only the client's deadline
     #[tokio::test(start_paused = true)]
-    async fn a_stream_lives_while_it_delivers_until_the_clients_deadline_or_a_silence_bound() {
-        const SILENT: Option<Duration> = Some(Duration::from_secs(300));
+    async fn a_stream_lives_while_it_delivers_until_the_clients_deadline() {
         let s100 = Duration::from_secs(100);
         let data = |at: u64| (at, "data".to_owned());
         let ended = |at: u64, code: &str| (at, code.to_owned());
         let every_100s_for_1000s: Vec<_> = (1..=10).map(|n| data(n * 100)).collect();
-        let delivering = Handler::Stream { count: 10, period: s100, silent: false };
+        let delivering = Handler::Stream { count: 10, period: s100 };
 
-        // case, grpc-timeout, silence bound, handler, frames as (second, data / status)
+        // case, grpc-timeout, handler, frames as (second, data / status)
         #[rustfmt::skip]
         let cases = [
-            ("delivering 1,000 s",       HeaderMap::new(), SILENT, delivering,
+            ("delivering 1,000 s",            HeaderMap::new(), delivering,
                 [every_100s_for_1000s, vec![ended(1_000, "Ok")]].concat()),
-            ("client deadline 250 s",    timeout("250S"),  SILENT, delivering,
+            ("client deadline 250 s",         timeout("250S"),  delivering,
                 vec![data(100), data(200), ended(250, "DeadlineExceeded")]),
-            ("silent after one record",  HeaderMap::new(), SILENT, Handler::Stream { count: 1, period: s100, silent: true },
-                vec![data(100), ended(400, "Unavailable")]),
-            ("subscription, 1,000 s gaps", HeaderMap::new(), None, Handler::Stream { count: 2, period: s100 * 10, silent: false },
+            ("1,000 s gaps, no deadline",     HeaderMap::new(), Handler::Stream { count: 2, period: s100 * 10 },
                 vec![data(1_000), data(2_000), ended(2_000, "Ok")]),
-            ("handler pending, 2 s deadline", timeout("2S"), SILENT, Handler::Pending,
+            ("handler pending, 2 s deadline", timeout("2S"),    Handler::Pending,
                 vec![ended(2, "DeadlineExceeded")]),
-            ("handler pending, no deadline", HeaderMap::new(), SILENT, Handler::Pending,
-                vec![ended(300, "Unavailable")]),
-            ("handler pending, 1 h deadline", timeout("1H"), SILENT, Handler::Pending,
-                vec![ended(300, "Unavailable")]),
         ];
-        for (case, headers, silent, handler, expected) in cases {
+        for (case, headers, handler, expected) in cases {
             let start = Instant::now();
 
-            let response = Bounds::of(&headers, silent).apply(handle(handler)).await;
+            let response = super::apply(super::of(&headers), handle(handler)).await;
 
             assert_eq!(drained(start, response).await, expected, "{case}: {handler:?}");
         }

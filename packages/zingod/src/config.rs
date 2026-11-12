@@ -679,7 +679,7 @@ fn resolve_validators(
     tables.into_iter().map(resolve).collect()
 }
 
-/// [`DaemonConfigFile`], resolved: what the daemon, `verify`, `hold` and `overload` run on
+/// [`DaemonConfigFile`], resolved: what the daemon, `verify`, `hold` and `origin` run on
 #[derive(Debug)]
 pub(crate) struct DaemonConfig {
     pub(crate) network: NetworkType,
@@ -1097,11 +1097,9 @@ key_path = "/k.pem"
 [grpc]
 max_work_streams = 64
 unread_timeout_secs = 30
-silent_timeout_secs = 45
 max_connection_age_secs = 0
 max_connection_age_grace_secs = 60
 max_connection_idle_secs = 120
-adaptive_work_streams = false
 shutdown_grace_secs = 600
 trusted_proxies = ["10.0.0.0/8"]
 
@@ -1128,11 +1126,9 @@ cache_dir = "/var/cache/zingod/peers"
         let grpc = GrpcLimits {
             max_work_streams: NonZeroUsize::new(64).expect("non-zero"),
             unread_timeout: secs(30),
-            silent_timeout: secs(45),
             max_connection_age: None,
             max_connection_age_grace: secs(60),
             max_connection_idle: Some(secs(120)),
-            adaptive_work_streams: false,
             drain_timeout: secs(600),
             trusted_proxies: zingod_grpc::TrustedProxies::new(vec!["10.0.0.0/8"
                 .parse()

@@ -8,7 +8,7 @@ Zingod reports a single state. The same value appears in `/readyz`, `/status`, t
 | State          | Meaning                                                                                   | `/readyz` |
 | -------------- | ----------------------------------------------------------------------------------------- | --------- |
 | `held`         | an operator ran [`zingod hold`](maintenance.md#operator-hold)                             | `503`     |
-| `down`         | cannot serve: the server is stalled or [overloaded](maintenance.md#overload), startup is waiting for a validator, or the tip is unverified and stale | `503`     |
+| `down`         | cannot serve: the server is stalled or [overloaded](dos-protection.md#overload), startup is waiting for a validator, or the tip is unverified and stale | `503`     |
 | `provisioning` | starting up, or installing an [index snapshot](first-sync.md#index-snapshot)              | `503`     |
 | `degraded`     | serving a recent tip that no trusted validator has confirmed (p2p peers supplied it)      | `200`     |
 | `syncing`      | serving, but behind the best block; or no validator's mempool is available yet            | `503`     |
@@ -107,13 +107,8 @@ ts=… level=info target=zingod::telemetry::progress message="Syncing blocks" he
 
 ### The `Serving` line
 
-Once a minute, the gRPC server logs a `Serving` summary: `rps` (streams completed per second) and
-`conns` (open connections). It is logged at WARN if, during that minute, any request failed or
-was refused, took more than a second to its first response (`slow`), stalled (`stalled`), or a
-connection was refused at a limit (`conns_refused`). These fields appear only when non-zero.
-
-- `INTERNAL`, `UNKNOWN` and `DATA_LOSS` count as failures. `UNAVAILABLE` and
-  `RESOURCE_EXHAUSTED` count as refusals. Other codes are client errors, counted in
-  `zingod_grpc_requests_total{code}`.
-- The first failure of each minute is also logged as `Request failed` (ERROR), and the first
-  refusal not caused by capacity as `Request unavailable` (WARN).
+Once a minute, the gRPC server logs a `Serving` summary: `rps` (requests completed per second)
+and `conns` (open connections). If any request was refused (`UNAVAILABLE`, `RESOURCE_EXHAUSTED`)
+or failed (`INTERNAL`, `UNKNOWN`, `DATA_LOSS`) that minute, it is logged at WARN with `refused`
+and `failed` counts. The first failure of each minute is also logged as `Request failed` (ERROR)
+with its message. Everything else is in the [metrics](#metrics).

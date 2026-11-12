@@ -170,7 +170,7 @@ impl Drop for LiveRoutes {
 pub(super) fn dispatch(
     routes: RouteDeps<ZcashLegacyRpcClient, DiskView>,
 ) -> Dispatch<ZcashLegacyRpcClient, DiskView> {
-    let dispatch = Dispatch::new(&crate::GrpcLimits::default());
+    let dispatch = Dispatch::new();
     dispatch.routing().route(routes);
     dispatch
 }

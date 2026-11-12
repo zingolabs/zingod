@@ -10,9 +10,8 @@ Zingod has two listeners:
 
 Connections to validators are plain HTTP JSON-RPC.
 
-Limits on connections, streams and reads are set under `[grpc]`; see the
-[reference](configuration.md#reference). When a limit is reached, the request is refused, not
-queued.
+Limits on connections, requests and reads are set under `[grpc]`; see
+[DoS protection](dos-protection.md).
 
 ## TLS
 
@@ -46,35 +45,11 @@ after changing the listen address, delete `cert.pem`.
 allowing any origin. Native gRPC is unaffected.
 
 Enabling it makes the server usable from any website. A popular site embedding it can send load
-proportional to its own traffic.
-
-`zingod origin` manages per-origin policy. Changes apply within a second and persist until
-changed:
-
-| Command                         | Effect                                                         |
-| ------------------------------- | -------------------------------------------------------------- |
-| `zingod origin block <domain>`  | refuse requests from the origin with `PERMISSION_DENIED`       |
-| `zingod origin allow <domain>`  | serve the origin even when a parent domain is blocked          |
-| `zingod origin reset <domain>`  | remove the origin's policy                                     |
-| `zingod origin`                 | list the policies in effect                                    |
-
-- Policies apply to the registrable domain and its subdomains. The most specific policy wins, so
-  `allow app.example.com` can override `block example.com`.
-- Every origin that is not blocked meets the same limits as any other client. Clients can set any
-  `Origin` header, so an origin never lifts a limit.
-- `zingod_grpc_origin_requests_total{verdict}` counts browser requests by policy. To find an
-  abusive origin, check your proxy or edge logs.
+proportional to its own traffic. To refuse a site, see [Browser
+origins](dos-protection.md#browser-origins).
 
 Over HTTP/1.1, browsers open one connection per in-flight stream, each counting against
 `max_connections_per_ip`. Serve over TLS so browsers use HTTP/2.
-
-## Stream timeouts
-
-Streams have no total time limit. Two settings close streams that stop making progress:
-
-- `unread_timeout_secs`: the client stopped reading. The connection is closed.
-- `silent_timeout_secs`: the server has had nothing to send. The stream ends with `UNAVAILABLE`.
-  `GetMempoolStream` is exempt.
 
 ## Behind a proxy
 
@@ -114,9 +89,3 @@ For HAProxy, use `server zingod 127.0.0.1:8137 send-proxy-v2` in a `mode tcp` ba
 
 If your proxy cannot send the header, leave `trusted_proxies` empty and raise
 `max_connections_per_ip` to `max_connections`.
-
-## Open files
-
-Each connection uses a file descriptor. At startup, Zingod raises its soft `RLIMIT_NOFILE` to the
-hard limit and refuses to start if `max_connections` plus 1024 does not fit. Raise the hard limit
-(`LimitNOFILE=` in systemd, `--ulimit nofile=` in Docker) or lower `max_connections`.
