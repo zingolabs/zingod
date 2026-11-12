@@ -9,6 +9,7 @@ use zingod_primitives::metric::Metric;
 
 use crate::admission::Class;
 use crate::lifetime::RetireReason;
+use crate::origin::OriginVerdict;
 use crate::overload::OverloadCause;
 use crate::read_lanes::Lane;
 use crate::service::{Method, Reply};
@@ -30,6 +31,7 @@ const STALLED_CONNECTIONS_TOTAL: &str = "zingod.grpc.stalled_connections_total";
 const RETIRED_CONNECTIONS_TOTAL: &str = "zingod.grpc.retired_connections_total";
 const ADAPTIVE_STREAM_LIMIT: &str = "zingod.grpc.adaptive_stream_limit";
 const OVERLOAD_LATCHED: &str = "zingod.grpc.overload_latched";
+const ORIGIN_REQUESTS_TOTAL: &str = "zingod.grpc.origin_requests_total";
 
 /// Σ `SENT_BYTES_TOTAL` over methods, readable without the metrics recorder (zingod's egress)
 static SENT_BYTES: AtomicU64 = AtomicU64::new(0);
@@ -122,6 +124,10 @@ pub const METRICS: &[Metric] = &[
         "Overload causes latched, by cause (1 = latched, also while detection is off; /readyz names \
          the first only while on)",
     ),
+    Metric::counter(
+        ORIGIN_REQUESTS_TOTAL,
+        "gRPC-web requests carrying an Origin, by gate verdict (blocked, allowed, default)",
+    ),
 ];
 
 pub(crate) fn connection_retired(reason: RetireReason) {
@@ -176,6 +182,19 @@ pub(crate) fn stream_rejected(class: Class) {
         Class::Work => metrics::counter!(ADMISSION_REJECTED_TOTAL).increment(1),
         Class::Subscription => metrics::counter!(SUBSCRIPTIONS_REJECTED_TOTAL).increment(1),
     }
+}
+
+fn verdict_label(verdict: OriginVerdict) -> &'static str {
+    match verdict {
+        OriginVerdict::Blocked => "blocked",
+        OriginVerdict::Allowed => "allowed",
+        OriginVerdict::Default => "default",
+    }
+}
+
+/// One `Origin`-bearing (gRPC-web) request, by gate verdict (native requests never counted here)
+pub(crate) fn origin_request(verdict: OriginVerdict) {
+    metrics::counter!(ORIGIN_REQUESTS_TOTAL, "verdict" => verdict_label(verdict)).increment(1);
 }
 
 /// Set at each overload window
