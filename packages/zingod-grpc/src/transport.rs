@@ -74,6 +74,7 @@ pub struct GrpcService<S: ChainDataSource, V> {
     health: Option<Arc<dyn Health>>,
     retire: Retire,
     grpc_web: bool,
+    origin_gate: Arc<crate::OriginGate>,
 }
 
 /// Boot-time only: a bound server never fails ([`BoundGrpcService::run`] returns `()`)
@@ -89,13 +90,30 @@ impl<S: ChainDataSource, V: PinnedView> GrpcService<S, V> {
         let dispatch = Dispatch::new(&limits);
         let admission = Arc::new(AdmissionState::new(&limits));
         let retire = Retire::default();
-        Self { dispatch, bind, limits, tls: None, admission, health: None, retire, grpc_web: false }
+        let origin_gate = crate::OriginGate::new();
+        Self {
+            dispatch,
+            bind,
+            limits,
+            tls: None,
+            admission,
+            health: None,
+            retire,
+            grpc_web: false,
+            origin_gate,
+        }
     }
 
     /// Serve gRPC-web (browser) clients too: permissive CORS (`*`) on this listener, native
     /// gRPC untouched (the `Origin` gate does the blocking; off = no CORS, browsers refused)
     pub fn with_grpc_web(mut self, grpc_web: bool) -> Self {
         self.grpc_web = grpc_web;
+        self
+    }
+
+    /// Origin policy the serve path consults (`zingod origin`; the poll loop shares this gate)
+    pub fn with_origin_gate(mut self, gate: Arc<crate::OriginGate>) -> Self {
+        self.origin_gate = gate;
         self
     }
 
@@ -203,6 +221,7 @@ struct Shared<S: ChainDataSource, V> {
     admission: Arc<AdmissionState>,
     limits: GrpcLimits,
     grpc_web: bool,
+    origin_gate: Arc<crate::OriginGate>,
     cancel: CancellationToken,
 }
 
@@ -250,6 +269,7 @@ impl<S: ChainDataSource, V: PinnedView> BoundGrpcService<S, V> {
             admission: server.admission,
             limits: server.limits,
             grpc_web: server.grpc_web,
+            origin_gate: server.origin_gate,
             cancel: cancel.clone(),
         });
         let mut backoff = ACCEPT_BACKOFF_MIN;
@@ -391,8 +411,13 @@ impl<S: ChainDataSource, V: PinnedView> Shared<S, V> {
         let stalls = Arc::new(crate::stall::Watch::default());
         let activity = Arc::new(Activity::default());
         let admission = Arc::clone(&self.admission);
-        let guard =
-            Guard::new(self.dispatch.clone(), admission, Arc::clone(&stalls), activity.clone());
+        let guard = Guard::new(
+            self.dispatch.clone(),
+            admission,
+            Arc::clone(&stalls),
+            activity.clone(),
+            Arc::clone(&self.origin_gate),
+        );
         // CORS outermost (answers browser preflight), then gRPC-web framing, native gRPC through
         let gated = cors(self.grpc_web).layer(tonic_web::GrpcWebLayer::new().layer(guard));
         let service =
