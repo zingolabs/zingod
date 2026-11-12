@@ -9,7 +9,6 @@ use std::time::Duration;
 
 use tracing::{info, warn};
 
-use crate::admission::Class;
 use crate::metrics;
 
 /// Refusals: >= ENTER_PERCENT of work (at >= 1 refusal/s) latches, < EXIT_PERCENT clears
@@ -28,32 +27,25 @@ struct Latch {
 
 #[derive(Debug, Default)]
 pub(crate) struct Overload {
-    admitted_work: AtomicU64,
-    refused_work: AtomicU64,
-    refused_subscriptions: AtomicU64,
+    admitted: AtomicU64,
+    refused: AtomicU64,
     latch: Mutex<Latch>,
 }
 
 impl Overload {
-    pub(crate) fn admitted(&self, class: Class) {
-        if class == Class::Work {
-            self.admitted_work.fetch_add(1, Ordering::Relaxed);
-        }
+    pub(crate) fn admitted(&self) {
+        self.admitted.fetch_add(1, Ordering::Relaxed);
     }
 
-    pub(crate) fn refused(&self, class: Class) {
-        metrics::stream_rejected(class);
-        let refused = match class {
-            Class::Work => &self.refused_work,
-            Class::Subscription => &self.refused_subscriptions,
-        };
-        refused.fetch_add(1, Ordering::Relaxed);
+    pub(crate) fn refused(&self) {
+        metrics::stream_rejected();
+        self.refused.fetch_add(1, Ordering::Relaxed);
     }
 
-    /// Closes the window (`elapsed` long): its refusals, every class
-    pub(crate) fn tick(&self, elapsed: Duration) -> u64 {
+    /// Closes the window (`elapsed` long)
+    pub(crate) fn tick(&self, elapsed: Duration) {
         let take = |counter: &AtomicU64| counter.swap(0, Ordering::Relaxed);
-        let (admitted, refused) = (take(&self.admitted_work), take(&self.refused_work));
+        let (admitted, refused) = (take(&self.admitted), take(&self.refused));
         let attempts = admitted.saturating_add(refused);
         let percent_of_attempts = |percent: u64| attempts.saturating_mul(percent);
         let refused_percent = refused.saturating_mul(100);
@@ -72,8 +64,6 @@ impl Overload {
             }
         }
         metrics::overloaded(latch.held);
-
-        refused.saturating_add(take(&self.refused_subscriptions))
     }
 
     pub(crate) fn latched(&self) -> bool {
@@ -110,10 +100,10 @@ mod tests {
                 .map(|&percent| {
                     let total = per_second * 60;
                     for _ in 0..total * (100 - percent) / 100 {
-                        overload.admitted(Class::Work);
+                        overload.admitted();
                     }
                     for _ in 0..total * percent / 100 {
-                        overload.refused(Class::Work);
+                        overload.refused();
                     }
                     overload.tick(MINUTE);
                     overload.latched()
@@ -122,25 +112,5 @@ mod tests {
 
             assert_eq!(latched, want, "{case}: latched after each minute");
         }
-    }
-
-    /// Subscription refusals count toward the summary, never toward the latch
-    #[test]
-    fn a_window_reports_every_refusal_and_latches_on_work_only() {
-        let overload = Overload::default();
-        for _ in 0..10 {
-            for _ in 0..120 {
-                overload.refused(Class::Subscription);
-            }
-            assert_eq!(overload.tick(MINUTE), 120, "every subscription refusal reported");
-        }
-        assert!(!overload.latched(), "10 min of subscription refusals: not overloaded");
-
-        for _ in 0..120 {
-            overload.refused(Class::Work);
-        }
-        overload.refused(Class::Subscription);
-        assert_eq!(overload.tick(MINUTE), 121, "120 work + 1 subscription refused");
-        assert_eq!(overload.tick(MINUTE), 0, "next window starts at zero");
     }
 }

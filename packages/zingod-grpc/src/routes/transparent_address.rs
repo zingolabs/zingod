@@ -21,8 +21,8 @@ use http::Response;
 use tonic::{body::Body, Status};
 
 use super::args;
+use super::blocking;
 use super::info::chain_name;
-use crate::read_lanes::{Lane, ReadLanes};
 use crate::wire::{self, frame, streamed_response, unary_response};
 
 /// One request's transparent-address index: the reader (as of the served tip, row-capped) + the
@@ -36,9 +36,8 @@ pub(crate) struct AddressIndex<V> {
 pub(crate) async fn get_address_utxos<V: PinnedView>(
     address_index: AddressIndex<V>,
     request: service::GetAddressUtxosArg,
-    reads: &ReadLanes,
 ) -> Result<Response<Body>, Status> {
-    let address_utxos = address_utxos(address_index, &request, reads).await?;
+    let address_utxos = address_utxos(address_index, &request).await?;
     let reply = service::GetAddressUtxosReplyList { address_utxos };
     Ok(unary_response(wire::frame(&reply)))
 }
@@ -47,9 +46,8 @@ pub(crate) async fn get_address_utxos<V: PinnedView>(
 pub(crate) async fn get_address_utxos_stream<V: PinnedView>(
     address_index: AddressIndex<V>,
     request: service::GetAddressUtxosArg,
-    reads: &ReadLanes,
 ) -> Result<Response<Body>, Status> {
-    let address_utxos = address_utxos(address_index, &request, reads).await?;
+    let address_utxos = address_utxos(address_index, &request).await?;
     Ok(streamed_response(address_utxos.iter().map(wire::frame).collect()))
 }
 
@@ -57,9 +55,8 @@ pub(crate) async fn get_address_utxos_stream<V: PinnedView>(
 pub(crate) async fn get_taddress_balance<V: PinnedView>(
     address_index: AddressIndex<V>,
     address_list: service::AddressList,
-    reads: &ReadLanes,
 ) -> Result<Response<Body>, Status> {
-    let balance = total_balance(address_index, &address_list.addresses, reads).await?;
+    let balance = total_balance(address_index, &address_list.addresses).await?;
     Ok(unary_response(wire::frame(&balance)))
 }
 
@@ -67,11 +64,10 @@ pub(crate) async fn get_taddress_balance<V: PinnedView>(
 pub(crate) async fn get_taddress_balance_stream<V: PinnedView>(
     address_index: AddressIndex<V>,
     streamed: Vec<service::Address>,
-    reads: &ReadLanes,
 ) -> Result<Response<Body>, Status> {
     let addresses: Vec<String> = streamed.into_iter().map(|one| one.address).collect();
 
-    let balance = total_balance(address_index, &addresses, reads).await?;
+    let balance = total_balance(address_index, &addresses).await?;
     Ok(unary_response(wire::frame(&balance)))
 }
 
@@ -82,10 +78,9 @@ pub(crate) async fn get_taddress_transactions<S: ChainDataSource, V: PinnedView>
     validators: TrafficBalancer<S>,
     grpc_snapshot: Arc<GrpcSnapshot<V>>,
     filter: service::TransparentAddressBlockFilter,
-    reads: &ReadLanes,
 ) -> Result<Response<Body>, Status> {
-    let txids = address_txids(address_index, filter, reads).await?;
-    Ok(streamed_raw_transactions(txids, validators, grpc_snapshot, reads.clone()))
+    let txids = address_txids(address_index, filter).await?;
+    Ok(streamed_raw_transactions(txids, validators, grpc_snapshot))
 }
 
 /// Utxos of every requested address at or above `startHeight`, height order, capped at
@@ -93,7 +88,6 @@ pub(crate) async fn get_taddress_transactions<S: ChainDataSource, V: PinnedView>
 async fn address_utxos<V: PinnedView>(
     address_index: AddressIndex<V>,
     request: &service::GetAddressUtxosArg,
-    reads: &ReadLanes,
 ) -> Result<Vec<service::GetAddressUtxosReply>, Status> {
     let from = args::height(request.start_height, "startHeight")?;
     let addresses = request
@@ -103,12 +97,11 @@ async fn address_utxos<V: PinnedView>(
         .collect::<Result<Vec<_>, _>>()?;
 
     let reader = address_index.reader;
-    let (addresses, utxos_per_address) = reads
-        .read(Lane::Scan, move || {
-            let utxos = reader.utxos_of(&addresses, from);
-            (addresses, utxos)
-        })
-        .await?;
+    let (addresses, utxos_per_address) = blocking(move || {
+        let utxos = reader.utxos_of(&addresses, from);
+        (addresses, utxos)
+    })
+    .await?;
     let utxos_per_address = utxos_per_address.map_err(serve_error_status)?;
 
     let mut address_utxos = Vec::new();
@@ -137,7 +130,6 @@ async fn address_utxos<V: PinnedView>(
 async fn total_balance<V: PinnedView>(
     address_index: AddressIndex<V>,
     addresses: &[String],
-    reads: &ReadLanes,
 ) -> Result<service::Balance, Status> {
     let distinct: Vec<TransparentAddress> = addresses
         .iter()
@@ -147,7 +139,7 @@ async fn total_balance<V: PinnedView>(
         .collect();
 
     let reader = address_index.reader;
-    let balances = reads.read(Lane::Scan, move || reader.balances(&distinct)).await?;
+    let balances = blocking(move || reader.balances(&distinct)).await?;
     let total = balances.map_err(serve_error_status)?.into_iter().sum::<Option<Zatoshis>>();
     let total = total.ok_or_else(|| {
         Status::failed_precondition("these addresses' unspent total exceeds the money supply")
@@ -159,7 +151,6 @@ async fn total_balance<V: PinnedView>(
 async fn address_txids<V: PinnedView>(
     address_index: AddressIndex<V>,
     filter: service::TransparentAddressBlockFilter,
-    reads: &ReadLanes,
 ) -> Result<Vec<zcash_protocol::TxId>, Status> {
     let address = parse_transparent_address(&filter.address, address_index.network)?;
     let range = filter.range.ok_or_else(|| Status::invalid_argument("range is required"))?;
@@ -171,7 +162,7 @@ async fn address_txids<V: PinnedView>(
     let (start, end) = args::ordered(bound(range.start, "start")?, bound(range.end, "end")?)?;
 
     let reader = address_index.reader;
-    let touching = reads.read(Lane::Scan, move || reader.transactions(&address, start, end));
+    let touching = blocking(move || reader.transactions(&address, start, end));
     touching.await?.map_err(serve_error_status)
 }
 
@@ -183,16 +174,13 @@ fn streamed_raw_transactions<S: ChainDataSource, V: PinnedView>(
     txids: Vec<zcash_protocol::TxId>,
     validators: TrafficBalancer<S>,
     grpc_snapshot: Arc<GrpcSnapshot<V>>,
-    reads: ReadLanes,
 ) -> Response<Body> {
     let transactions = futures::stream::iter(txids).then(move |txid| {
         let (validators, grpc_snapshot) = (validators.clone(), Arc::clone(&grpc_snapshot));
-        let reads = reads.clone();
         async move {
             let snapshot = &grpc_snapshot;
             let fetched =
-                super::transactions::fetch_raw_transaction(&validators, snapshot, &reads, txid)
-                    .await;
+                super::transactions::fetch_raw_transaction(&validators, snapshot, txid).await;
             fetched.map(|transaction| frame(&transaction))
         }
     });

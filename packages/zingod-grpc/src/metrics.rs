@@ -7,12 +7,9 @@ use metrics::Unit;
 use tonic::Code;
 use zingod_primitives::metric::Metric;
 
-use crate::admission::Class;
 use crate::lifetime::RetireReason;
 use crate::origin::OriginVerdict;
-use crate::read_lanes::Lane;
 use crate::service::{Method, Reply};
-use crate::summary;
 
 const REQUESTS_TOTAL: &str = "zingod.grpc.requests_total";
 const FIRST_MESSAGE_SECONDS: &str = "zingod.grpc.first_message_seconds";
@@ -20,10 +17,7 @@ const DURATION_SECONDS: &str = "zingod.grpc.duration_seconds";
 const SENT_BYTES_TOTAL: &str = "zingod.grpc.sent_bytes_total";
 const ACTIVE_STREAMS: &str = "zingod.grpc.active_streams";
 const ADMISSION_REJECTED_TOTAL: &str = "zingod.grpc.admission_rejected_total";
-const ACTIVE_SUBSCRIPTIONS: &str = "zingod.grpc.active_subscriptions";
-const SUBSCRIPTIONS_REJECTED_TOTAL: &str = "zingod.grpc.subscriptions_rejected_total";
 const ACCEPT_ERRORS_TOTAL: &str = "zingod.grpc.accept_errors_total";
-const DISK_READ_WAIT_SECONDS: &str = "zingod.grpc.disk_read_wait_seconds";
 const CONNECTIONS_ACTIVE: &str = "zingod.grpc.connections_active";
 const CONNECTIONS_REJECTED_TOTAL: &str = "zingod.grpc.connections_rejected_total";
 const STALLED_CONNECTIONS_TOTAL: &str = "zingod.grpc.stalled_connections_total";
@@ -90,20 +84,10 @@ pub const METRICS: &[Metric] = &[
         ADMISSION_REJECTED_TOTAL,
         "Work streams refused UNAVAILABLE at the adaptive work-stream limit",
     ),
-    Metric::gauge(ACTIVE_SUBSCRIPTIONS, "GetMempoolStream subscriptions holding a slot"),
-    Metric::counter(
-        SUBSCRIPTIONS_REJECTED_TOTAL,
-        "Subscriptions refused UNAVAILABLE at max_subscriptions",
-    ),
     Metric::counter(
         ACCEPT_ERRORS_TOTAL,
         "accept() failures the listener backed off from (EMFILE, ENFILE, ENOBUFS, ...)",
     ),
-    Metric::histogram(
-        DISK_READ_WAIT_SECONDS,
-        "Wait for an index-read permit, by lane (point, range, scan)",
-    )
-    .unit(Unit::Seconds),
     Metric::gauge(CONNECTIONS_ACTIVE, "Open client connections"),
     Metric::counter(
         STALLED_CONNECTIONS_TOTAL,
@@ -148,7 +132,6 @@ pub(crate) fn connection_closed() {
 /// A connection closed for holding data unread past `unread_timeout`
 pub(crate) fn connection_stalled() {
     metrics::counter!(STALLED_CONNECTIONS_TOTAL).increment(1);
-    summary::connection_stalled();
 }
 
 pub(crate) fn accept_failed() {
@@ -157,29 +140,18 @@ pub(crate) fn accept_failed() {
 
 pub(crate) fn connection_rejected() {
     metrics::counter!(CONNECTIONS_REJECTED_TOTAL).increment(1);
-    summary::connection_refused();
 }
 
-fn active(class: Class) -> &'static str {
-    match class {
-        Class::Work => ACTIVE_STREAMS,
-        Class::Subscription => ACTIVE_SUBSCRIPTIONS,
-    }
+pub(crate) fn stream_admitted() {
+    metrics::gauge!(ACTIVE_STREAMS).increment(1.0);
 }
 
-pub(crate) fn stream_admitted(class: Class) {
-    metrics::gauge!(active(class)).increment(1.0);
+pub(crate) fn stream_released() {
+    metrics::gauge!(ACTIVE_STREAMS).decrement(1.0);
 }
 
-pub(crate) fn stream_released(class: Class) {
-    metrics::gauge!(active(class)).decrement(1.0);
-}
-
-pub(crate) fn stream_rejected(class: Class) {
-    match class {
-        Class::Work => metrics::counter!(ADMISSION_REJECTED_TOTAL).increment(1),
-        Class::Subscription => metrics::counter!(SUBSCRIPTIONS_REJECTED_TOTAL).increment(1),
-    }
+pub(crate) fn stream_rejected() {
+    metrics::counter!(ADMISSION_REJECTED_TOTAL).increment(1);
 }
 
 fn verdict_label(verdict: OriginVerdict) -> &'static str {
@@ -200,11 +172,6 @@ pub(crate) fn overloaded(latched: bool) {
     metrics::gauge!(OVERLOADED).set(f64::from(u8::from(latched)));
 }
 
-pub(crate) fn disk_read_waited(lane: Lane, waited: Duration) {
-    metrics::histogram!(DISK_READ_WAIT_SECONDS, "lane" => lane.label())
-        .record(waited.as_secs_f64());
-}
-
 /// A stream's first message (a one-reply RPC's = its whole answer: [`stream_finished`] times it)
 pub(crate) fn first_message(method: Option<Method>, elapsed: Duration) {
     if reply(method) == Reply::Stream {
@@ -216,14 +183,7 @@ pub(crate) fn first_message(method: Option<Method>, elapsed: Duration) {
 /// One stream's close-out (recorded where the body drops)
 ///
 /// - `latency` = time to its first message, for an answered work request
-pub(crate) fn stream_finished(
-    method: Option<Method>,
-    code: Code,
-    elapsed: Duration,
-    latency: Option<Duration>,
-    sent: u64,
-) {
-    summary::finished(code, latency);
+pub(crate) fn stream_finished(method: Option<Method>, code: Code, elapsed: Duration, sent: u64) {
     let name = method_label(method);
     metrics::counter!(REQUESTS_TOTAL, "method" => name, "code" => code_label(code)).increment(1);
     // answers only (refusal = µs of no work)

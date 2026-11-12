@@ -1097,7 +1097,6 @@ key_path = "/k.pem"
 [grpc]
 max_work_streams = 64
 unread_timeout_secs = 30
-silent_timeout_secs = 45
 max_connection_age_secs = 0
 max_connection_age_grace_secs = 60
 max_connection_idle_secs = 120
@@ -1127,7 +1126,6 @@ cache_dir = "/var/cache/zingod/peers"
         let grpc = GrpcLimits {
             max_work_streams: NonZeroUsize::new(64).expect("non-zero"),
             unread_timeout: secs(30),
-            silent_timeout: secs(45),
             max_connection_age: None,
             max_connection_age_grace: secs(60),
             max_connection_idle: Some(secs(120)),

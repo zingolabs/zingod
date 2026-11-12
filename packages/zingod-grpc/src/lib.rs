@@ -21,7 +21,6 @@ mod metrics;
 mod origin;
 mod overload;
 mod proxy_protocol;
-mod read_lanes;
 mod routes;
 mod service;
 mod stall;

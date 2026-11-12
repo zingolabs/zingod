@@ -18,7 +18,6 @@ use zingod_proto::proto::service;
 
 use super::args;
 use super::blocks::CompactBlocks;
-use crate::read_lanes::ReadLanes;
 use crate::wire;
 
 /// `GetBlockRangeNullifiers`
@@ -28,13 +27,12 @@ use crate::wire;
 pub(crate) fn get_block_range_nullifiers<V: zingod_persistence::PinnedView>(
     compact_blocks: CompactBlocks<'_, V>,
     mut range: service::BlockRange,
-    reads: ReadLanes,
 ) -> Result<Response<Body>, Status> {
     range.pool_types.retain(|&pool| pool != i32::from(service::PoolType::Transparent));
 
     let pools = args::pools(&range.pool_types)?;
     let blocks = compact_blocks.open_range(&range, pools)?;
-    Ok(blocks.into_response(reads, nullifiers_only_chunk))
+    Ok(blocks.into_response(nullifiers_only_chunk))
 }
 
 /// Framed records → framed nullifier-only records, one frame per block

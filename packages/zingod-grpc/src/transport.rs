@@ -85,7 +85,7 @@ pub enum GrpcServeError {
 impl<S: ChainDataSource, V: PinnedView> GrpcService<S, V> {
     /// Unrouted: health answered, every method `UNAVAILABLE` until [`Routing::route`]
     pub fn new(bind: SocketAddr, limits: GrpcLimits) -> Self {
-        let dispatch = Dispatch::new(&limits);
+        let dispatch = Dispatch::new();
         let admission = Arc::new(AdmissionState::new(&limits));
         let retire = Retire::default();
         let origin_gate = crate::OriginGate::new();
@@ -280,8 +280,8 @@ impl<S: ChainDataSource, V: PinnedView> BoundGrpcService<S, V> {
                 accepted = listener.accept() => accepted,
                 now = summaries.tick() => {
                     let elapsed = now.saturating_duration_since(window_opened);
-                    let at_capacity = shared.admission.tick(elapsed);
-                    summary::summarise(elapsed, shared.caps.held(), at_capacity);
+                    shared.admission.tick(elapsed);
+                    summary::summarise(elapsed, shared.caps.held());
                     window_opened = now;
                     continue;
                 }
@@ -947,11 +947,7 @@ mod tests {
 
         let healthy = ("200".to_owned(), r#"{"state":"serving","detail":null}"#.to_owned());
         assert_eq!(readyz().await, healthy, "ALPN http/1.1 /readyz, unrouted");
-        assert_eq!(
-            admission.held(crate::admission::Class::Work),
-            0,
-            "a monitor's /readyz never holds a work slot"
-        );
+        assert_eq!(admission.held(), 0, "a monitor's /readyz never holds a work slot");
         let starting = (Code::Unavailable, crate::service::STARTING.to_owned());
         assert_eq!(lightd_info().await, starting, "ALPN h2 → the gRPC stack, unrouted");
 

@@ -17,7 +17,7 @@ use http_body::{Body, Frame, SizeHint};
 use tonic::{Code, Status};
 use tower::ServiceExt as _;
 
-use crate::admission::{self, AdmissionState, Class, Slot};
+use crate::admission::{self, AdmissionState, Slot};
 use crate::lifetime::{Activity, Open};
 use crate::origin::{OriginGate, OriginVerdict};
 use crate::service::Method;
@@ -82,7 +82,6 @@ where
 
     fn call(&mut self, request: Request<ReqBody>) -> Self::Future {
         let method = Method::of_request(&request);
-        let class = method.map_or(Class::Work, |method| method.route().class);
         let mut close = CloseOut {
             method,
             started: Instant::now(),
@@ -90,7 +89,6 @@ where
             sent: 0,
             code: None,
             message: None,
-            at_capacity: false,
             ended: false,
             _open: self.activity.opened(),
         };
@@ -111,14 +109,17 @@ where
             return Box::pin(std::future::ready(Ok(refusal)));
         }
         // every unblocked origin = one admission path (Origin client-settable, never lifts a cap)
-        let slot = match self.admission.admit(class) {
-            Some(slot) => slot,
-            None => {
-                (close.code, close.at_capacity) = (Some(Code::Unavailable), true);
-                let refusal = admission::refused(class);
-                let refusal = refusal.map(|inner| Guarded { inner, slot: None, ticket, close });
-                return Box::pin(std::future::ready(Ok(refusal)));
-            }
+        let slot = match method.is_some_and(Method::is_subscription) {
+            true => None,
+            false => match self.admission.admit() {
+                Some(slot) => Some(slot),
+                None => {
+                    close.code = Some(Code::Unavailable);
+                    let refusal = admission::refused();
+                    let refusal = refusal.map(|inner| Guarded { inner, slot: None, ticket, close });
+                    return Box::pin(std::future::ready(Ok(refusal)));
+                }
+            },
         };
 
         let inner = self.inner.clone();
@@ -127,12 +128,12 @@ where
             // header-carried `grpc-status` = unary answer or error, already complete
             let (code, message) = status_of(response.headers()).unzip();
             (close.code, close.message) = (code, message.flatten());
-            Ok(response.map(|inner| Guarded { inner, slot: Some(slot), ticket, close }))
+            Ok(response.map(|inner| Guarded { inner, slot, ticket, close }))
         })
     }
 }
 
-/// Response body owning its stream's guards (`slot` = `None` on a refusal or once ended)
+/// Response body owning its stream's guards (`slot` = `None`: a subscription, a refusal, or ended)
 #[derive(Debug)]
 pub(crate) struct Guarded<B> {
     inner: B,
@@ -153,7 +154,6 @@ struct CloseOut {
     sent: u64,
     code: Option<Code>,
     message: Option<String>,
-    at_capacity: bool,
     ended: bool,
     _open: Open,
 }
@@ -220,16 +220,8 @@ impl Drop for CloseOut {
             true => Code::Ok,
             false => Code::Cancelled,
         });
-        let elapsed = self.started.elapsed();
-        // answered work request's latency = its client's wait for the first message
-        let subscription = self.method.is_some_and(|method| method.route().is_subscription());
-        let latency =
-            (code == Code::Ok && !subscription).then(|| self.first_message.unwrap_or(elapsed));
-
-        metrics::stream_finished(self.method, code, elapsed, latency, self.sent);
-        if code != Code::Ok && !self.at_capacity {
-            summary::answered_badly(self.method, code, self.message.as_deref().unwrap_or_default());
-        }
+        metrics::stream_finished(self.method, code, self.started.elapsed(), self.sent);
+        summary::finished(self.method, code, self.message.as_deref().unwrap_or_default());
     }
 }
 
@@ -316,7 +308,7 @@ mod tests {
         // fill the one work slot (held open, never ends)
         let held = guard.call(request("/open")).await.expect("infallible");
         let _held = std::pin::pin!(held.into_body());
-        assert_eq!(state.held(Class::Work), 1, "slot taken");
+        assert_eq!(state.held(), 1, "slot taken");
 
         let verdict = |response: &Response<Guarded<tonic::body::Body>>| {
             status_of(response.headers()).map(|(code, _)| code)
@@ -330,7 +322,7 @@ mod tests {
         assert_eq!(verdict(&blocked), Some(Code::PermissionDenied), "blocked origin refused");
         assert_eq!(verdict(&allowed), Some(Code::Unavailable), "carve-out refused at the limit");
         assert_eq!(verdict(&other), Some(Code::Unavailable), "default origin refused at the limit");
-        assert_eq!(state.held(Class::Work), 1, "no refusal took a slot");
+        assert_eq!(state.held(), 1, "no refusal took a slot");
     }
 
     /// Guard → ticket wiring (stall timing itself: `stall.rs`)
@@ -374,7 +366,7 @@ mod tests {
             Arc::default(),
             OriginGate::new(),
         );
-        let in_flight = || state.held(Class::Work);
+        let in_flight = || state.held();
 
         let open = guard.call(request("/open")).await.expect("infallible");
         assert_eq!(in_flight(), 1, "handler returned, stream still open");
@@ -388,14 +380,11 @@ mod tests {
         assert_eq!(in_flight(), 0, "read to its end: returned before the drop");
     }
 
+    /// `GetMempoolStream` idles until the next block: never takes or waits on a work slot
     #[tokio::test]
-    async fn subscriptions_have_their_own_pool_beside_work() {
-        let one = NonZeroUsize::MIN;
-        let limits = crate::GrpcLimits {
-            max_work_streams: one,
-            max_subscriptions: one,
-            ..Default::default()
-        };
+    async fn subscriptions_open_with_every_work_slot_taken() {
+        let limits =
+            crate::GrpcLimits { max_work_streams: NonZeroUsize::MIN, ..Default::default() };
         let state = Arc::new(AdmissionState::new(&limits));
         let mut guard = Guard::new(
             Answers,
@@ -405,31 +394,26 @@ mod tests {
             OriginGate::new(),
         );
         let mempool = &Method::GetMempoolStream.path();
-        fn refusal<B>(response: &Response<B>) -> Option<Status> {
-            Status::from_header_map(response.headers())
-        }
-        let _work = guard.call(request("/open")).await.expect("infallible");
+        let code = |response: &Response<_>| status_of(response.headers()).map(|(code, _)| code);
 
-        let subscribed = guard.call(request(mempool)).await.expect("infallible");
-        assert_eq!(
-            refusal(&subscribed).map(|s| s.code()),
-            None,
-            "work pool full: subscription admitted"
-        );
-        let second = guard.call(request(mempool)).await.expect("infallible");
-        let refused = refusal(&second).map(|status| (status.code(), status.message().to_owned()));
-        let full = Some((Code::Unavailable, "subscription limit reached".to_owned()));
-        assert_eq!(refused, full, "second subscription over max_subscriptions 1");
-        drop(subscribed);
-        let third = guard.call(request(mempool)).await.expect("infallible");
-        assert_eq!(refusal(&third).map(|s| s.code()), None, "slot back on disconnect");
+        let _work = guard.call(request("/open")).await.expect("infallible");
+        let refused = guard.call(request("/open")).await.expect("infallible");
+        let subscribed: Vec<_> =
+            futures::future::join_all((0..3).map(|_| guard.call(request(mempool))))
+                .await
+                .into_iter()
+                .map(|response| code(&response.expect("infallible")))
+                .collect();
+
+        assert_eq!(code(&refused), Some(Code::Unavailable), "work pool of 1 full");
+        assert_eq!(subscribed, vec![None; 3], "every subscription opened");
+        assert_eq!(state.held(), 1, "subscriptions hold no work slot");
     }
 
     /// Default limits (`max_work_streams` 2048, adaptive from 256):
     ///
     /// - 257th open work stream refused at once (a queue would hang a wallet behind the open
     ///   streams), below the ceiling, `UNAVAILABLE` + pushback, taking no slot
-    /// - counted once the window closes
     #[tokio::test]
     async fn work_past_the_adaptive_limit_is_refused_at_once_below_the_ceiling() {
         use futures::FutureExt as _;
@@ -455,9 +439,7 @@ mod tests {
         let retry_after = HeaderValue::from_static("250");
         assert_eq!(refusal, (Code::Unavailable, "work stream limit reached", Some(&retry_after)));
 
-        let refusals = state.tick(Duration::from_secs(1));
-        assert_eq!(refusals, 1, "the window's one refusal");
-        let work = (state.work_limit(), state.held(Class::Work));
+        let work = (state.work_limit(), state.held());
         assert_eq!(work, (256, 256), "refused below the 2048 ceiling, no slot of its own");
     }
 }
