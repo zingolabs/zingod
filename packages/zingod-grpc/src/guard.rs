@@ -95,8 +95,15 @@ where
             _open: self.activity.opened(),
         };
         let ticket = self.stalls.ticket();
-        let verdict = origin_host(request.headers())
-            .map_or(OriginVerdict::Default, |h| self.gate.verdict(&h));
+        // native requests carry no Origin (verdict Default, uncounted); gRPC-web ones are metered
+        let verdict = match origin_host(request.headers()) {
+            Some(host) => {
+                let verdict = self.gate.verdict(&host);
+                metrics::origin_request(verdict);
+                verdict
+            }
+            None => OriginVerdict::Default,
+        };
         if verdict == OriginVerdict::Blocked {
             close.code = Some(Code::PermissionDenied);
             let refusal = Status::permission_denied("origin blocked").into_http();
