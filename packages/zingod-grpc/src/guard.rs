@@ -19,6 +19,7 @@ use tower::ServiceExt as _;
 
 use crate::admission::{self, AdmissionState, Class, Slot};
 use crate::lifetime::{Activity, Open};
+use crate::origin::{OriginGate, OriginVerdict};
 use crate::service::Method;
 use crate::stall::{self, Ticket};
 use crate::{metrics, summary};
@@ -29,6 +30,7 @@ pub(crate) struct Guard<Inner> {
     admission: Arc<AdmissionState>,
     stalls: Arc<stall::Watch>,
     activity: Arc<Activity>,
+    gate: Arc<OriginGate>,
 }
 
 impl<Inner> Guard<Inner> {
@@ -37,9 +39,17 @@ impl<Inner> Guard<Inner> {
         admission: Arc<AdmissionState>,
         stalls: Arc<stall::Watch>,
         activity: Arc<Activity>,
+        gate: Arc<OriginGate>,
     ) -> Self {
-        Self { inner, admission, stalls, activity }
+        Self { inner, admission, stalls, activity, gate }
     }
+}
+
+/// Request `Origin` → host (scheme / port stripped, lowercased); absent = native client (default)
+fn origin_host(headers: &HeaderMap) -> Option<String> {
+    let origin = headers.get(http::header::ORIGIN)?.to_str().ok()?;
+    let host = origin.rsplit("://").next()?.split([':', '/']).next()?;
+    (!host.is_empty()).then(|| host.to_ascii_lowercase())
 }
 
 /// `grpc-status`, plus its decoded `grpc-message` when it is not `Ok` (never read on success)
@@ -85,11 +95,24 @@ where
             _open: self.activity.opened(),
         };
         let ticket = self.stalls.ticket();
-        let Some(slot) = self.admission.admit(class) else {
-            (close.code, close.at_capacity) = (Some(Code::Unavailable), true);
-            let refusal = admission::refused(class);
+        let verdict = origin_host(request.headers())
+            .map_or(OriginVerdict::Default, |h| self.gate.verdict(&h));
+        if verdict == OriginVerdict::Blocked {
+            close.code = Some(Code::PermissionDenied);
+            let refusal = Status::permission_denied("origin blocked").into_http();
             let refusal = refusal.map(|inner| Guarded { inner, slot: None, ticket, close });
             return Box::pin(std::future::ready(Ok(refusal)));
+        }
+        // allowed = never turned away; default = refused at the limit
+        let slot = match self.admission.admit(class) {
+            Some(slot) => slot,
+            None if verdict == OriginVerdict::Allowed => self.admission.admit_exempt(class),
+            None => {
+                (close.code, close.at_capacity) = (Some(Code::Unavailable), true);
+                let refusal = admission::refused(class);
+                let refusal = refusal.map(|inner| Guarded { inner, slot: None, ticket, close });
+                return Box::pin(std::future::ready(Ok(refusal)));
+            }
         };
 
         let inner = self.inner.clone();
@@ -263,12 +286,55 @@ mod tests {
         request
     }
 
+    fn request_origin(path: &str, origin: &str) -> Request<Full<Bytes>> {
+        let mut request = request(path);
+        request
+            .headers_mut()
+            .insert(http::header::ORIGIN, HeaderValue::from_str(origin).expect("origin"));
+        request
+    }
+
+    /// With one work slot full, the gate decides the next request: a blocked origin is
+    /// `PermissionDenied`, an allowed origin is served past the limit, any other is refused
+    #[tokio::test]
+    async fn the_origin_gate_blocks_exempts_and_otherwise_defers_to_the_limit() {
+        let limits = crate::GrpcLimits {
+            max_work_streams: NonZeroUsize::MIN,
+            adaptive_work_streams: false,
+            ..crate::GrpcLimits::default()
+        };
+        let state = Arc::new(AdmissionState::new(&limits));
+        let gate = OriginGate::new();
+        gate.set(["evil.com".to_owned()].into(), ["good.example".to_owned()].into());
+        let mut guard =
+            Guard::new(Answers, Arc::clone(&state), Arc::default(), Arc::default(), gate);
+
+        // fill the one work slot (held open, never ends)
+        let held = guard.call(request("/open")).await.expect("infallible");
+        let _held = std::pin::pin!(held.into_body());
+        assert_eq!(state.held(Class::Work), 1, "slot taken");
+
+        let verdict = |response: &Response<Guarded<tonic::body::Body>>| {
+            status_of(response.headers()).map(|(code, _)| code)
+        };
+        let blocked = guard.call(request_origin("/short", "https://evil.com")).await.expect("i");
+        let allowed =
+            guard.call(request_origin("/short", "https://good.example")).await.expect("i");
+        let other =
+            guard.call(request_origin("/short", "https://unknown.example")).await.expect("i");
+
+        assert_eq!(verdict(&blocked), Some(Code::PermissionDenied), "blocked origin refused");
+        assert_eq!(verdict(&allowed), None, "allowed origin served past the full limit");
+        assert_eq!(verdict(&other), Some(Code::Unavailable), "default origin refused at the limit");
+    }
+
     /// Guard → ticket wiring (stall timing itself: `stall.rs`)
     #[tokio::test(start_paused = true)]
     async fn a_stream_owes_from_a_handed_data_frame_until_its_next_poll() {
         let stalls = Arc::new(stall::Watch::default());
         let admission = Arc::new(AdmissionState::new(&crate::GrpcLimits::default()));
-        let mut guard = Guard::new(Answers, admission, Arc::clone(&stalls), Arc::default());
+        let mut guard =
+            Guard::new(Answers, admission, Arc::clone(&stalls), Arc::default(), OriginGate::new());
 
         let idle = guard.call(request("/open")).await.expect("infallible");
         let mut idle = std::pin::pin!(idle.into_body());
@@ -296,7 +362,13 @@ mod tests {
     #[tokio::test]
     async fn a_stream_slot_lives_as_long_as_its_body() {
         let state = Arc::new(AdmissionState::new(&crate::GrpcLimits::default()));
-        let mut guard = Guard::new(Answers, Arc::clone(&state), Arc::default(), Arc::default());
+        let mut guard = Guard::new(
+            Answers,
+            Arc::clone(&state),
+            Arc::default(),
+            Arc::default(),
+            OriginGate::new(),
+        );
         let in_flight = || state.held(Class::Work);
 
         let open = guard.call(request("/open")).await.expect("infallible");
@@ -320,7 +392,13 @@ mod tests {
             ..Default::default()
         };
         let state = Arc::new(AdmissionState::new(&limits));
-        let mut guard = Guard::new(Answers, Arc::clone(&state), Arc::default(), Arc::default());
+        let mut guard = Guard::new(
+            Answers,
+            Arc::clone(&state),
+            Arc::default(),
+            Arc::default(),
+            OriginGate::new(),
+        );
         let mempool = &Method::GetMempoolStream.path();
         fn refusal<B>(response: &Response<B>) -> Option<Status> {
             Status::from_header_map(response.headers())
@@ -352,7 +430,13 @@ mod tests {
         use futures::FutureExt as _;
 
         let state = Arc::new(AdmissionState::new(&crate::GrpcLimits::default()));
-        let mut guard = Guard::new(Answers, Arc::clone(&state), Arc::default(), Arc::default());
+        let mut guard = Guard::new(
+            Answers,
+            Arc::clone(&state),
+            Arc::default(),
+            Arc::default(),
+            OriginGate::new(),
+        );
         let mut open = Vec::new();
         for _ in 0..256 {
             open.push(guard.call(request("/open")).await.expect("infallible"));

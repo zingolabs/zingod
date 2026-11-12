@@ -137,9 +137,11 @@ async fn listen<S: ChainDataSource>(
     cancel: &CancellationToken,
     tasks: &mut JoinSet<TaskExit>,
 ) -> Result<Serving<S>, IndexerError> {
+    let origin_gate = zingod_grpc::OriginGate::new();
     let mut server = GrpcService::new(config.serve.grpc_listen_address, config.grpc.clone())
         .with_retire(status.retire().clone())
         .with_grpc_web(config.serve.grpc_web)
+        .with_origin_gate(Arc::clone(&origin_gate))
         .with_health(Arc::clone(status) as Arc<dyn zingod_grpc::Health>);
     let span = component("Grpc");
     let (endpoint, network) = (config.serve.grpc_listen_address, network_name(config.network));
@@ -158,7 +160,7 @@ async fn listen<S: ChainDataSource>(
     }
     let serving = Serving { routing: server.routing(), admission: server.admission() };
     overload::spawn(server.admission(), &config.serve.state_dir, config.grpc.overload.clone());
-    origin::spawn(zingod_grpc::OriginGate::new(), &config.serve.state_dir);
+    origin::spawn(origin_gate, &config.serve.state_dir);
     let server = server.bind().await?;
     span.in_scope(|| info!(%endpoint, network, tls = mode, "Listening"));
     // loopback + off = the unset default (nothing to warn about)
