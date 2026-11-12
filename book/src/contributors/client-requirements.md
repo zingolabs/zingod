@@ -8,7 +8,7 @@ than not answering. Read at the source; references name a function or file, not 
 - **pepper-sync**: `zingolib/pepper-sync`, all traffic through `client/fetch.rs`. It backs
   zingolib and Zingo mobile.
 
-Where Zingod answers each method from: [rpc_api.md](./rpc_api.md).
+Where Zingod answers each method from: [zingod-grpc](https://github.com/zingolabs/zingod/blob/main/packages/zingod-grpc/usage.md#what-answers-each-method); the wallet-facing contract: [the book](../wallets/methods.md).
 
 ## The call matrix
 
@@ -53,7 +53,7 @@ an empty `TreeState.{orchard,ironwood}_tree` to an empty commitment tree with no
 `pepper-sync/src/witness.rs`), indistinguishable from a pre-activation height; `GetSubtreeRoots`
 is swallowed into `Vec::new()` the same way. So Zingod serves each pool from its activation on as
 the real tree (`000000` when empty), and `""` only below activation
-([tree-state guide](../packages/zingod-index-tree-state/usage.md#serving)).
+([tree-state guide](https://github.com/zingolabs/zingod/blob/main/packages/zingod-index-tree-state/usage.md#serving)).
 
 **The wire format is a `CommitmentTree`, not a frontier.** `TreeState.*_tree` is the hex of
 `zcash_primitives::merkle_tree::write_commitment_tree`; both clients parse it with

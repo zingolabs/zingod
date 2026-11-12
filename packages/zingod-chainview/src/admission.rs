@@ -1,5 +1,6 @@
 //! Consensus rules a transaction's own bytes, the next block and Zingod's UTXO set decide
-//! (`docs/architecture.md` §5): a submission's precheck, and a peer quorum's admission
+//! (`book/src/contributors/architecture.md` §5): a submission's precheck, and a peer quorum's
+//! admission
 //!
 //! - consensus only: fee floors = node policy (carried by the peer quorum, never second-guessed)
 //! - never run: proofs, signatures, scripts, coinbase maturity (the quorum's validators ran them)

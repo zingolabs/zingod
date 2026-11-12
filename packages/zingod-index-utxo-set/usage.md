@@ -111,4 +111,4 @@ fee = Σ transparent inputs − Σ transparent outputs
   `ValueOverflow` (ZIP 209).
 - Mempool fees do not come from this fold, since an unconfirmed transaction
   may spend another unconfirmed one
-  ([architecture §5](../../docs/architecture.md#5-the-mempool-view)).
+  ([architecture §5](../../book/src/contributors/architecture.md#5-the-mempool-view)).

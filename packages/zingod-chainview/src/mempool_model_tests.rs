@@ -1,6 +1,7 @@
 //! Mempool model: trusted validators polled / failing / killed, peers' listings churning (some
 //! byzantine), blocks, our sends → real merge (`ChainViewCore`) + real checks
-//! (`peer_mempool::judge`) vs a naive oracle of `docs/architecture.md` §5 after every move
+//! (`peer_mempool::judge`) vs a naive oracle of `book/src/contributors/architecture.md` §5 after
+//! every move
 //!
 //! - each held at the first fee known; a child admitted once its parent is held
 

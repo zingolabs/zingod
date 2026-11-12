@@ -1063,7 +1063,7 @@ enabled = false
         let written = std::fs::read_to_string(&path).expect("written");
         assert_eq!(written, generated, "{} = the generated config", path.display());
 
-        let example = include_str!("../../../docs/example_configs/zingod.toml");
+        let example = include_str!("../../../book/src/operators/zingod.toml");
         let example = toml::from_str::<DaemonConfigFile>(example).expect("example parses");
         let resolved = example.clone().resolve().map(drop).map_err(|error| error.to_string());
         assert_eq!(resolved, Ok(()), "shipped example resolves");

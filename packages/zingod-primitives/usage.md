@@ -54,7 +54,7 @@ Coexisting balances cannot exceed the supply, so their sum (`.sum::<Option<Zatos
 acceptance rules, each rejection its own error variant), and the one nBits → target → work
 implementation. `Target` is the 256-bit threshold (zebra's `ExpandedDifficulty`). Chain work and
 the most-work rule built on them live in `zingod-header-chain`
-([architecture §4](../../docs/architecture.md#4-the-best-chain)).
+([architecture §4](../../book/src/contributors/architecture.md#4-the-best-chain)).
 
 ## Byte order
 

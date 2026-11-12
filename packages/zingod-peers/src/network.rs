@@ -1,4 +1,4 @@
-//! zebra-network embedded as Zingod's p2p layer (`docs/architecture.md` §3)
+//! zebra-network embedded as Zingod's p2p layer (`book/src/contributors/architecture.md` §3)
 //!
 //! ```text
 //!   requests ──▶ peer set (zebra's p2c over ready peers) ──▶ FindHeaders · BlocksByHash

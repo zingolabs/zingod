@@ -27,3 +27,6 @@ result-*
 **/*.log
 
 
+
+# mdbook build output
+book/book/

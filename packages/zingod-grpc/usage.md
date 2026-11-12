@@ -1,8 +1,41 @@
 # zingod-grpc
 
 The wallet-facing `CompactTxStreamer` endpoint: one `GrpcService`, every method dispatched by
-path over `RouteDeps`. What answers each method, and the status codes a client must tell apart:
-[`docs/rpc_api.md`](../../docs/rpc_api.md).
+path over `RouteDeps`. The wallet-facing contract (each method's answers, status codes):
+[the book's wallet chapter](../../book/src/wallets/methods.md).
+
+## What answers each method
+
+Derived answers come from a Zingod index, never the validator; consensus objects a validator
+already stores are asked of it ([architecture §1](../../book/src/contributors/architecture.md#1-who-owns-what)).
+
+| Method                                                  | Answered by                                                                                                                                    |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GetLatestBlock`                                        | the served tip (no index read)                                                                                                                 |
+| `GetBlock`, `GetBlockRange`                             | compact-block index                                                                                                                            |
+| `GetTreeState`, `GetLatestTreeState`, `GetSubtreeRoots` | tree-state index                                                                                                                               |
+| `GetAddressUtxos`, `GetAddressUtxosStream`              | transparent-address index                                                                                                                      |
+| `GetTaddressBalance`, `GetTaddressBalanceStream`        | transparent-address index                                                                                                                      |
+| `GetTaddressTransactions`                               | transparent-address index for the `{height, txid}` set, the bytes as `GetTransaction`'s                                                        |
+| `GetTransaction`                                        | validator; none answering: the served mempool's bytes, else the block the txid-location index names, from p2p peers, checked and the transaction cut out |
+| `GetStandardFee`                                        | computed (no validator call): `zingod_primitives::protocol::standard_fee` (zebrad's rule), estimator version 0                                |
+| `SendTransaction`                                       | chain view [submission](../../book/src/contributors/architecture.md#6-submission): a trusted `checkadmission` answers, then relayed through the peers           |
+| `GetMempoolTx`, `GetMempoolStream`                      | chain view [mempool](../../book/src/contributors/architecture.md#5-the-mempool-view): listed by a trusted validator, admitted by a peer quorum, or our own accepted send |
+| `GetLightdInfo`                                         | the served `GrpcSnapshot`: its tip, the verified best, the upgrade schedule (no validator call)                                                |
+| `GetBlockRangeNullifiers` *(deprecated, TODO: REMOVE)*  | compact-block index, re-projected to nullifiers                                                                                                |
+| `GetTaddressTxids` *(deprecated, TODO: REMOVE)*         | as `GetTaddressTransactions`                                                                                                                   |
+
+- "The validator" = the traffic balancer over every `[[trusted_validators]]` entry. An absent
+  answer is asked of the next validator (a lagging one may lack a just-mined transaction):
+  `NOT_FOUND` only when every one asked said absent.
+- Every index can be disabled (at least one stays on); utxo-set, which fills every
+  `CompactTx.fee`, runs with compact-block. A disabled index's methods are `UNIMPLEMENTED`; for
+  block-hash that is only the by-hash form of `GetBlock` and `GetTreeState`.
+- `lightwalletProtocolVersion` = the vendored protos' release (`zingod_proto::LIGHTWALLET_PROTOCOL_VERSION`).
+- `SendTransaction` rejections: zebrad's `-1` answers that judge the transaction count as
+  rejections; its other `-1`s (queue full, mempool disabled) do not.
+- Why the deprecated rows exist:
+  [client-requirements.md](../../book/src/contributors/client-requirements.md#two-deprecated-methods-served-until-pepper-sync-moves-off-them).
 
 ## RouteDeps
 
@@ -78,7 +111,7 @@ signatures and 528 of each 580-byte note ciphertext), to serve a read that happe
 transactions a wallet already trial-decrypted. The address methods are the opposite case: they
 are *derived*, so forwarding them would mean a second implementation that can disagree, or a
 dependency on a validator index Zebra need not have. The path with no validator answering:
-[architecture §1](../../docs/architecture.md#1-who-owns-what).
+[architecture §1](../../book/src/contributors/architecture.md#1-who-owns-what).
 
 ## Serve stack
 
@@ -94,7 +127,7 @@ accept ─ total cap ─ PROXY header (trusted peers) ─ per-client cap ─ TLS
 The guard (`guard.rs`) wraps each response body once: the body owns its admission slot, its
 stall-watch ticket and its close-out metrics, so all three end together when hyper drops it (a
 stream ending or its client disconnecting). What each `[grpc]` cap bounds:
-[the example config](../../docs/example_configs/zingod.toml).
+[the example config](../../book/src/operators/zingod.toml).
 
 - **Health** (`with_health(Arc<dyn Health>)`): `GET /readyz` (`200` / `503`) and `GET /status`
   (always `200`), answered before admission over HTTP/1.1 or h2, so they never take a work slot.
@@ -141,7 +174,7 @@ stream ending or its client disconnecting). What each `[grpc]` cap bounds:
 - Each accepted socket gets `TCP_NODELAY` and, on Linux, `TCP_NOTSENT_LOWAT` = 128 KiB: unsent
   bytes wait in h2, not the kernel, so a unary reply is not stuck behind a range already queued
   on the same connection.
-- Request bodies are capped before decode ([sizes](../../docs/rpc_api.md#status-codes-a-client-must-distinguish)).
+- Request bodies are capped before decode ([sizes](../../book/src/wallets/status-codes.md)).
 - **Deadline.** `grpc-timeout` is read at arrival (a malformed value is ignored, as tonic
   ignores it). Past it a pending handler answers `DEADLINE_EXCEEDED` and a stream ends with
   `DEADLINE_EXCEEDED` trailers; its reads and slot go with it.
@@ -184,30 +217,17 @@ single-flight; every later ask is answered inline.
 
 ### Overload
 
-`AdmissionState::overload()` names the first cause latched (`/readyz`: `Overloaded: <cause>`). A cause
-latches once over its `[grpc.overload]` threshold (`OverloadLimits`, 0 = off) for its enter time
-and clears once under half of it for its exit time; `AdmissionState::set_overload` changes the
-thresholds live.
-
-| Cause | Signal, per one-minute window | Enter / exit |
-| ----- | ----------------------------- | ------------ |
-| `CPU pressure`, `IO pressure` | share of the window zingod's cgroup waited (Linux PSI; no cgroup PSI file = unmeasured) | 2 / 3 min |
-| `refusing work` | admission refused ≥ 10% of work at ≥ 1/s (exit: < 2%) | 5 / 5 min |
+`AdmissionState::overload()` names the first cause latched (`/readyz`: `Overloaded: <cause>`);
+`AdmissionState::set_overload` changes the `[grpc.overload]` thresholds (`OverloadLimits`) live.
+Causes, signals and enter / exit times:
+[operators: overload](../../book/src/operators/maintenance.md#overload).
 
 ### Serving log
 
 `run` logs one `Serving` summary a minute under the caller's span, from the same close-outs the
-metrics count: `rps` = streams finished per second, `conns` = connections held. It is WARN once
-the window holds a failure, a refusal, a request slower than 1 s to its first message (`slow`),
-a stalled connection closed (`stalled`) or a connection refused at a cap (`conns_refused`); those
-fields appear only when non-zero. Nothing served and nothing held = no line.
+metrics count; its fields and levels:
+[operators: the `Serving` line](../../book/src/operators/monitoring.md#the-serving-line).
 
-- Status codes by who they blame: `Internal`, `Unknown`, `DataLoss` = **failed** (this server);
-  `Unavailable`, `ResourceExhausted` = **refused** (`at_capacity` = the admission share);
-  everything else = the client's, left to `requests_total{code}`.
-- The window's first failure is logged as it happens (ERROR `Request failed`: `method`, `code`,
-  the client's `error`), and its first refusal other than admission (WARN `Request unavailable`);
-  the rest are only counted, so an outage costs two lines a minute.
 - Latency metrics by each `Method`'s `Reply` (a test holds every method to `service.proto`): a
   unary reply records `duration_seconds` (`OK` answers only), a server stream
   `first_message_seconds`.

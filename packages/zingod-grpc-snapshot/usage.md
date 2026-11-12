@@ -1,7 +1,7 @@
 # `zingod-grpc-snapshot` — usage
 
 One value for everything Zingod serves
-([architecture §8](../../docs/architecture.md#8-serving-one-grpcsnapshot)): the chain view's latest,
+([architecture §8](../../book/src/contributors/architecture.md#8-serving-one-grpcsnapshot)): the chain view's latest,
 the NFS's latest and a mempool feed keyed to the served tip, published together as one
 `Arc<GrpcSnapshot>`. Every read of chain, index, mempool or validator state, by a route, a probe, a
 scrape or a log line, loads one and asks it everything.
@@ -37,12 +37,12 @@ let lightd = grpc_snapshot.lightd()?;                  // GetLightdInfo: one loa
 | ----------------------- | ----------------------------------------------------------------------------- |
 | `tips()`                | `Tips { best, finalized_tip, served, synced }`                                |
 | `served()`              | the NFS's served `IndexesAtBlock` (`tip()`, `branch()`, `params()`, `views()`); `NothingServed` before its first publish |
-| `mempool()`             | the servable mempool behind [the gate](../../docs/architecture.md#5-the-mempool-view); else `NoChain` / `NotHeld` |
+| `mempool()`             | the servable mempool behind [the gate](../../book/src/contributors/architecture.md#5-the-mempool-view); else `NoChain` / `NotHeld` |
 | `mempool_stream()`      | a `MempoolTail` on the epoch at `tips.served` (same gate)                     |
 | `lightd()`              | `Lightd { served, best, schedule }`: the served height, the verified best's (the network tip estimate) and the served `IndexesAtBlock`'s upgrade schedule; `NothingServed` before the first publish, never a validator (served degraded too) |
 | `chain_view()`          | the chain view's snapshot: validator facts, alarms, spreads                   |
 | `indexed()`             | the NFS publish (`Arc` identity = a memo key: new per NFS publish)            |
-| `serving_status(now_unix)` | `Down` / `Degraded` / `Syncing` / `Serving`: zingod's [state rules](../../docs/running.md#states) past boot, fresh = within `zingod_chainview::STALE_TIP_BLOCKS` target spacings of `now_unix` |
+| `serving_status(now_unix)` | `Down` / `Degraded` / `Syncing` / `Serving`: zingod's [state rules](../../book/src/operators/monitoring.md#states) past boot, fresh = within `zingod_chainview::STALE_TIP_BLOCKS` target spacings of `now_unix` |
 | `sync_target()`         | best's height, or a catching-up validator's clock estimate when higher        |
 
 - `Unavailable`'s `Display` = the gRPC `UNAVAILABLE` message: `no verified header chain tip yet`,
@@ -54,7 +54,7 @@ let lightd = grpc_snapshot.lightd()?;                  // GetLightdInfo: one loa
   (a tail ends after its opening): route tests over `NfsPublication::fixed` +
   `ChainViewSnapshot::fixed`.
 
-- `synced` ([when it opens and closes](../../docs/architecture.md#8-serving-one-grpcsnapshot))
+- `synced` ([when it opens and closes](../../book/src/contributors/architecture.md#8-serving-one-grpcsnapshot))
   compares hashes, not heights; `serving_status` = `Syncing` until it opens.
 
 ## `GetMempoolStream`: one epoch per served tip
@@ -75,7 +75,7 @@ while let Some(logged) = tail.next().await {            // each arrival once; No
 - Never a transaction of the served tip's own chain: the opening and every arrival skip the
   txids of `NfsPublication::served_above_durable()`, collected once per epoch (the chain view's listings
   trail a block by up to a poll, so its mempool still lists what the new tip mined).
-- The stream's contract: [architecture §8](../../docs/architecture.md#getmempoolstream).
+- The stream's contract: [architecture §8](../../book/src/contributors/architecture.md#getmempoolstream).
 
 ## Reporting
 
@@ -95,7 +95,7 @@ metrics::with_local_recorder(&recorder, || {
   The names are ztest's `zingod` families: renaming one breaks its runs.
 - Edge logs per publish (`transitions`): INFO `Serving the verified tip` / `Behind the verified
   tip, syncing` when `synced` flips; WARN on a rise, INFO on a clear, for each chain view alarm
-  ([architecture §11](../../docs/architecture.md#11-telemetry)).
+  ([architecture §11](../../book/src/contributors/architecture.md#11-telemetry)).
 
 ## Invariants and tests
 
@@ -119,4 +119,4 @@ metrics::with_local_recorder(&recorder, || {
   rendered gauges of one snapshot; the serving-status and mempool-gate tables; one fire drill per
   `check` assertion.
 
-Heavy run required after changes: see [docs/testing.md](../../docs/testing.md#heavy-run).
+Heavy run required after changes: see [book/src/contributors/testing.md](../../book/src/contributors/testing.md#heavy-run).

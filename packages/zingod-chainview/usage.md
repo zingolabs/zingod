@@ -1,7 +1,7 @@
 # `zingod-chainview` — usage
 
 Header sync, the mempool view and submission over N trusted validators and, optionally, peers.
-What each source is trusted for and why: [architecture §3–§6](../../docs/architecture.md#3-sources-and-what-each-is-trusted-for).
+What each source is trusted for and why: [architecture §3–§6](../../book/src/contributors/architecture.md#3-sources-and-what-each-is-trusted-for).
 
 The view keeps no durable state: a restart loses nothing one poll round does not restore. Every
 request goes through one `zingod_traffic::TrafficBalancer`.
@@ -148,7 +148,7 @@ let entries = pinned.mempool().ok_or("no holder: UNAVAILABLE")?.excluding(&exclu
 ## Submission
 
 Two steps, both `Result<_, SubmitError>`; the protocol is
-[architecture §6](../../docs/architecture.md#6-submission).
+[architecture §6](../../book/src/contributors/architecture.md#6-submission).
 
 - `ChainView::validate_transaction(raw)` → `ValidatedTransaction`: precheck + check below,
   nothing relayed (a refusal never leaves Zingod)
@@ -193,7 +193,7 @@ This crate emits events only (its `METRICS`: submissions by outcome); the `zingo
 gauges are `zingod-grpc-snapshot`'s, set at scrape.
 
 `alarms()` → `Alarms`: each raised `Alarm` (`FinalityPaused`, and per validator `Stale`,
-`Ending`), derived per merge ([architecture §11](../../docs/architecture.md#11-telemetry);
+`Ending`), derived per merge ([architecture §11](../../book/src/contributors/architecture.md#11-telemetry);
 thresholds in `alarm_thresholds.rs`). A new alarm = an `Alarm` variant: the compiler then names
 its arms (raised in `telemetry::alarms`, noted and logged in `zingod-grpc-snapshot`'s report).
 

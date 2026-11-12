@@ -4,11 +4,11 @@
 slow-timeout = { period = "30s", terminate-after = 2 }
 
 # Model suites only (proptest vs a naive oracle), sized by PROPTEST_CASES
-# (docs/testing.md "Model tests in bulk")
+# (book/src/contributors/testing.md "Model tests in bulk")
 [profile.models]
 default-filter = "test(/model|random_histories/)"
 slow-timeout = { period = "300s" }
 
-# Whole crate suite at heavy case counts (docs/testing.md "Heavy run")
+# Whole crate suite at heavy case counts (book/src/contributors/testing.md "Heavy run")
 [profile.heavy]
 slow-timeout = { period = "300s" }

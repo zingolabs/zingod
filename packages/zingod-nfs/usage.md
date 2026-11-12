@@ -1,6 +1,6 @@
 # `zingod-nfs` — usage
 
-The tip overlay ([architecture §7](../../docs/architecture.md#tip-path-zingod-nfs)): every block
+The tip overlay ([architecture §7](../../book/src/contributors/architecture.md#tip-path-zingod-nfs)): every block
 above the indexes' durable tips folded in RAM, one `NfsPublication` publish across every index (the index
 half of `zingod_grpc_snapshot::GrpcSnapshot`). Finalized blocks reach the writers on the finalized path
 (`zingod-sync`), never through here.
@@ -30,7 +30,7 @@ tasks.spawn(nfs.run(cancel));                          // Err: Fold | IndexGone
 
 - `Nfs::new`: the `HeaderChainSnapshot` watch, the traffic balancer (`zingod_sync::fetch` per wanted
   block, `Urgency::Tip`), the chain params, `depth` (sets the folding window:
-  [architecture §7](../../docs/architecture.md#tip-path-zingod-nfs)), `lookahead` (bodies fetched
+  [architecture §7](../../book/src/contributors/architecture.md#tip-path-zingod-nfs)), `lookahead` (bodies fetched
   or folding ahead of the next fold).
 - `add(kind, handle)`: enables `kind` (panics on a kind twice). The handle's durable view is
   what publications and folds read.
@@ -57,7 +57,7 @@ let located = at.views().block_hash().map(|reader| reader.height_of(&hash));
   the tip node's layer, so a commit or reorg mid-request moves nothing it reads.
 - `IndexesAtBlock::answers_through(kind)` = the highest height `kind` answers: its durable tip when past a
   best-branch block (finalized data), else the block.
-- `served().tip()` = the served tip ([architecture §7](../../docs/architecture.md#tip-path-zingod-nfs)).
+- `served().tip()` = the served tip ([architecture §7](../../book/src/contributors/architecture.md#tip-path-zingod-nfs)).
   The publish is `None` (withdrawn) only with no folded best node and no root on the best chain.
 - `at(hash)`: any folded node (best or side) or the root; `None` = below the root, never folded,
   or unknown.
@@ -117,4 +117,4 @@ enabled index (`get` = `None` when disabled); both iterate in `IndexKind::ALL` (
 - `nfs_core/fire_drills.rs`: one planted bug per `check()` assertion and precondition.
 - `nfs/tests.rs`: `FinalizedFollower` + the six real writers + the NFS, end to end.
 
-Heavy run required after changes: see [docs/testing.md](../../docs/testing.md#heavy-run).
+Heavy run required after changes: see [book/src/contributors/testing.md](../../book/src/contributors/testing.md#heavy-run).

@@ -1,6 +1,6 @@
 # `zingod-peers` — usage
 
-Zingod's p2p layer ([architecture §3](../../docs/architecture.md#3-sources-and-what-each-is-trusted-for)): zebra-network's peer set,
+Zingod's p2p layer ([architecture §3](../../book/src/contributors/architecture.md#3-sources-and-what-each-is-trusted-for)): zebra-network's peer set,
 embedded. Peers are discovered and unauthenticated, so nothing here votes: every
 header, block and transaction handed out is identified by what zebra recomputes
 from its bytes, never by what a peer claimed.
@@ -81,7 +81,7 @@ several.
 - `push(raw)`: parses `raw` (zebra's parse-time checks and point rules; `PushError::Wire`
   otherwise, nothing sent), then zebra relays it as zebrad relays its own: to ⌈ready/3⌉
   random ready peers (all of them on regtest), over the peer set's existing connections
-  ([why, and what a relay proves](../../docs/architecture.md#6-submission)).
+  ([why, and what a relay proves](../../book/src/contributors/architecture.md#6-submission)).
   `PushError::Peers` = no ready peer within `request_timeout`.
 
 ## Announcements: the chain each peer carries
@@ -91,7 +91,7 @@ sender's address attached by zebra: `zingod_primitives::types::Announced { peer,
 (one block per `inv`; zebra drops multi-block ones), which the chain view counts by
 netgroup toward finality on peers' word.
 
-Transaction `inv`s are ignored ([why](../../docs/architecture.md#5-the-mempool-view)).
+Transaction `inv`s are ignored ([why](../../book/src/contributors/architecture.md#5-the-mempool-view)).
 Mempool membership is each peer's own listing (`mempool_of`).
 
 A subscriber that falls 4,096 announcements behind gets `RecvError::Lagged` and

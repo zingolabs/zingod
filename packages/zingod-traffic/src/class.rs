@@ -53,8 +53,8 @@ impl Class {
     }
 
     /// - `true` = headers + block bodies (checkable)
-    /// - trusted-only = the "only source" rows (`docs/architecture.md` §3) + mempool bytes (peers
-    ///   serve by wtxid, never a listing's txid)
+    /// - trusted-only = the "only source" rows (`book/src/contributors/architecture.md` §3) +
+    ///   mempool bytes (peers serve by wtxid, never a listing's txid)
     pub(crate) fn peers(self) -> bool {
         matches!(self, Self::Headers | Self::TipBlock | Self::BulkBlock)
     }

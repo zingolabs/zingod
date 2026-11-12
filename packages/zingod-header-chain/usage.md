@@ -1,6 +1,6 @@
 # `zingod-header-chain` — usage
 
-The Validated Header tree ([architecture §4](../../docs/architecture.md#4-the-best-chain): the
+The Validated Header tree ([architecture §4](../../book/src/contributors/architecture.md#4-the-best-chain): the
 anchor, trusted vs peer headers, finality): the bounded tree of branches above the finalized
 boundary, the most-work tip, and the immutable `HeaderChainSnapshot` everything downstream reads. A
 trusted header enters by `insert`, a peer's by `insert_untrusted` (`validate` first).
@@ -67,7 +67,7 @@ as `NonMinimalLength`, as zcashd's `ReadCompactSize`).
   `ECLIPSE_NETGROUPS` (5) netgroups did (only the first 6 netgroups are kept: quorate is final).
 - Finality (H6): a block is **settled** when vouched, or peer-quorate while no unvouched
   best-chain block holds under half the work of the highest vouched block (or the anchor;
-  [why](../../docs/architecture.md#finality)). Peers never move that difficulty reference.
+  [why](../../book/src/contributors/architecture.md#finality)). Peers never move that difficulty reference.
   `finalizable()` names the best-chain block at `min(highest settled, best − depth)`;
   `finalize(block)` moves every best-chain header up to it into the finalized headers and prunes
   every branch not descending from it. Finalizing anything else is a caller bug: it panics
@@ -133,4 +133,4 @@ child counts, leaf set), naming the invariant in its panic; `finalize` asserts H
 
   ```
 
-Heavy run required after changes: see [docs/testing.md](../../docs/testing.md#heavy-run).
+Heavy run required after changes: see [book/src/contributors/testing.md](../../book/src/contributors/testing.md#heavy-run).

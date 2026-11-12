@@ -3,7 +3,7 @@
 The finalized path: `FinalizedFollower` fetches every finalized block in order onto one byte-bounded
 broadcast (`FinalizedStream<Block>`); each index writer runs its own loop over its store
 (`apply` / `commit`) and publishes it through an `IndexPublisher`. Where it fits:
-[architecture §7](../../docs/architecture.md#finalized-path-zingod-sync).
+[architecture §7](../../book/src/contributors/architecture.md#finalized-path-zingod-sync).
 
 ```text
  HeaderChainSnapshot ─▶ FinalizedFollower ─▶ FinalizedStream<Block> ─┬─▶ [queue] ─▶ utxo-set ─▶ FeeSink ┐
@@ -38,7 +38,7 @@ another.
 - Streams `lowest durable + 1 ..= finalized tip`, `lookahead` blocks in flight, delivered in order;
   waits for the next chain past the finalized tip.
 - Which source serves which height, and how each is checked:
-  [architecture §7](../../docs/architecture.md#finalized-path-zingod-sync). By hash = `fetch`; by
+  [architecture §7](../../book/src/contributors/architecture.md#finalized-path-zingod-sync). By hash = `fetch`; by
   height = `fetch_at` → `TrafficBalancer::blocks_at`, as many per request as one reply at
   `ResponseSizeCap::MAX` holds. A reply short of its heights is a misanswer
   (`Misanswer::Count`), asked again.

@@ -1,7 +1,7 @@
 # `zingod-traffic` — usage
 
 One scheduler for every request Zingod sends to its trusted validators and to peers
-([architecture §9](../../docs/architecture.md#9-talking-to-validators-and-peers)): one member
+([architecture §9](../../book/src/contributors/architecture.md#9-talking-to-validators-and-peers)): one member
 table, one hedge / failover / blame policy, and the poll loop of every trusted validator. Per
 member, one permit is the poll's alone (nothing delays tip following); then three lanes, control
 (submit, headers), interactive (tip blocks, lookups, mempool bytes) and bulk (bulk blocks), each
@@ -48,7 +48,7 @@ tasks.spawn(driver.run(cancel));     // without it, asks pend and nobody is poll
   per lane + one shared. `Limits::default()` = 32. `max_connections()` reads it back (the
   transport's pool takes the same number). `Limits` (de)serializes as that bare number,
   refused at parse below 5: zingod's `[[trusted_validators]] max_connections`.
-- Load on a validator = `max_connections` here ([architecture](../../docs/architecture.md#9-talking-to-validators-and-peers)).
+- Load on a validator = `max_connections` here ([architecture](../../book/src/contributors/architecture.md#9-talking-to-validators-and-peers)).
 - `TrafficBalancer` is `Clone` (one `Arc`); hand the same one to every consumer.
 
 ## Asking
@@ -186,4 +186,4 @@ its oracle checks T3 and T6 on every send.
 - `tests.rs` (paused clock): a lookup storm never delays a poll, a merkle liar is benched, a hedge
   beats a 20 s stall, a push stream wakes the poll within 200 ms.
 
-After any change to this crate: the [heavy run](../../docs/testing.md#heavy-run).
+After any change to this crate: the [heavy run](../../book/src/contributors/testing.md#heavy-run).

@@ -1,7 +1,8 @@
 # `zingod` — usage
 
 The daemon binary: config → boot → one task per stage. Operating it (configuration, states,
-hold, systemd, index snapshots, `verify`, network exposure) is [`docs/running.md`](../../docs/running.md).
+hold, systemd, index snapshots, `verify`, network exposure):
+[the operators chapter](../../book/src/operators/quick-start.md).
 
 ## Layout
 
@@ -47,31 +48,7 @@ zingod dies rather than serve from a state it cannot vouch for
 
 ## Logging
 
-`zingod start` and `generate-config` log [logfmt](https://brandur.org/logfmt) to stdout, coloured only on a terminal;
-`verify`, `hold`, `resume` and `overload` print only their report.
-`RUST_LOG` is the standard tracing filter: unset, zingod crates log at `info`; a malformed one
-stops startup.
-
-```text
-ts=… level=info target=zingod::telemetry::progress message="Syncing blocks" height=3503023 target=3506659 bps=10 eta=5m49s component=ZingodNFS
-ts=… level=info target=zingod::telemetry::progress message=Syncing applied=3501900 durable=3501802 size=31.0GB component=compact_block
-```
-
-- `component` names the stage: `Zingod`, `Admin`, `IndexSnapshot`, `Traffic`, `ChainView`,
-  `ZingodSync`, `ZingodNFS`, `GrpcSnapshot`, `Grpc`, and one per index named as its config table.
-- WARN and ERROR are worth an alert; `info` is progress and lifecycle.
-- `State changed` logs each change of the [state](../../docs/running.md#states) within a second,
-  at the new state's level (`down` error, `held` / `degraded` warn, the rest info). `Not ready`
-  repeats it every 60 s while `down`, `degraded` or `held`.
-- Alarms ([architecture §11](../../docs/architecture.md#11-telemetry)) log WARN once when raised
-  and INFO once when cleared.
-- Every 30 s while syncing: `Syncing blocks` (the finalized path), `Fetching non-finalized blocks`
-  (the NFS window after a restart), and one `Syncing` line per index; `Block fetch stalled` /
-  `Non-finalized block fetch stalled` warn when a phase stops moving. `Serving the verified tip`
-  marks the end.
-- gRPC logs one `Serving` summary a minute, WARN when anything failed or was refused, plus the
-  minute's first `Request failed` and `Request unavailable`.
-- LSM merges log at `debug`.
+What zingod logs and what to watch: [operators: logging](../../book/src/operators/monitoring.md#logging).
 
 ## Tests
 

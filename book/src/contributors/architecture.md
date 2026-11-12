@@ -1,10 +1,10 @@
-# Zingod architecture
+# Architecture
 
 How `zingod` turns a Zcash chain into the lightwalletd gRPC service, and why it is built this way.
-Crate APIs live in each crate's `usage.md`, the per-method RPC table in
-[rpc_api.md](./rpc_api.md), storage in the
-[`zingod-persistence` guide](../packages/zingod-persistence/usage.md), operating zingod in
-[running.md](./running.md).
+Crate APIs live in each crate's `usage.md`: what answers each method in
+[`zingod-grpc`](https://github.com/zingolabs/zingod/blob/main/packages/zingod-grpc/usage.md#what-answers-each-method),
+storage in
+[`zingod-persistence`](https://github.com/zingolabs/zingod/blob/main/packages/zingod-persistence/usage.md).
 
 ## 1. Who owns what
 
@@ -18,7 +18,7 @@ index and never falls back to a validator. So:
 - Block, tree-state and transparent-address methods come from an index or not at all. A disabled
   index answers `UNIMPLEMENTED` naming it.
 - `GetTransaction` goes to a validator: raw transaction bytes are consensus data it already stores
-  ([why](../packages/zingod-grpc/usage.md#why-gettransaction-forwards)). With no validator
+  ([why](https://github.com/zingolabs/zingod/blob/main/packages/zingod-grpc/usage.md#why-gettransaction-forwards)). With no validator
   answering, the txid-location index names the transaction's block, fetched from p2p peers and
   checked against the hash our indexes hold (which does not cover v5 proofs and signatures).
   `GetTaddressTransactions` works the same way: the
@@ -114,12 +114,12 @@ the NFS, the finalized path and the `GrpcSnapshot` publisher read.
 - **Trusted headers** arrive in runs and enter on their parent link and nBits work alone: the
   validator already ran the rules.
 - **Peer headers** (`[p2p]` on, once anchored) run every consensus rule first
-  (`zingod_header_chain::validate`, [the rules](../packages/zingod-header-chain/usage.md#validate-untrusted-fallback)).
+  (`zingod_header_chain::validate`, [the rules](https://github.com/zingolabs/zingod/blob/main/packages/zingod-header-chain/usage.md#validate-untrusted-fallback)).
   A header from the future is deferred, not blamed; one failing a rule gets its sender blamed.
 - **Bounds.** Side branches are capped in tips and nodes (past either, the lowest-work side leaf
   goes), and only a window of finalized headers is kept
-  ([limits](../packages/zingod-header-chain/usage.md#the-tree-the-best-tip-finality)). `depth` =
-  `[sync] finalised_depth` ([default and floor](./example_configs/zingod.toml)).
+  ([limits](https://github.com/zingolabs/zingod/blob/main/packages/zingod-header-chain/usage.md#the-tree-the-best-tip-finality)). `depth` =
+  `[sync] finalised_depth` ([default and floor](../operators/configuration.md#reference)).
 
 ### Finality
 
@@ -176,7 +176,7 @@ next poll (§9). Meanwhile the served tip drops to the fork point (§7) and `syn
 
 Through the window Zingod serves the fork point, a vouched block behind an unvouched best: a
 currency gap, not a trust gap, and the state rule reads it so
-([running.md: States](./running.md#states)). The `tip unvouched` alarm (§11) carries the
+([states](../operators/monitoring.md#states)). The `tip unvouched` alarm (§11) carries the
 unvouched best. L2 is the validator's job and no change on Zingod's side removes it.
 
 ## 5. The mempool view
@@ -189,7 +189,7 @@ quorum, or `ours` (accepted from our own submission). One trusted listing is eno
 validator is trusted.
 
 **Peer quorum** (`[p2p]` on). Each live outbound peer is polled for its whole mempool, and each
-listing counts while fresh ([intervals](../packages/zingod-chainview/usage.md#mempool)). A
+listing counts while fresh ([intervals](https://github.com/zingolabs/zingod/blob/main/packages/zingod-chainview/usage.md#mempool)). A
 transaction is admitted when:
 
 - more than 2/3 of the counted listings hold its exact id (txid + auth digest), from > 5 netgroups;
@@ -241,7 +241,7 @@ unchecked: Ok at the first acceptance (trusted Ok | any trusted listing | peer q
   mempool conflicts included, without admitting or relaying. It goes to a holder of the verified
   best only (a validator behind it refuses what spends a fresh output). A validator without it
   (zcashd, stock zebrad, zakurad) answers `-32601`: never a failure, the next holder is asked. A
-  refusal's wire shape: [rpc_api.md](./rpc_api.md#where-each-method-is-answered).
+  refusal's wire shape: [`SendTransaction`](../wallets/methods.md#transactions).
 - A peer relay gets no reply and zebra names no recipient. **Spread** = a trusted validator never
   pushed to lists it, or a peer quorum admits it (past the ~⅓ one relay reaches). The job ends at
   spread, when nothing outside its trusted entries can be watched, or when attempts run out.
@@ -249,7 +249,7 @@ unchecked: Ok at the first acceptance (trusted Ok | any trusted listing | peer q
   our IP, so a fresh connection per push would never deliver. With `[p2p]` off every attempt is a
   trusted `sendrawtransaction`.
 - `[submission]` sets `propagation_threshold_secs` and `max_attempts`
-  ([`SubmitPolicy`](../packages/zingod-chainview/usage.md#submission)).
+  ([`SubmitPolicy`](https://github.com/zingolabs/zingod/blob/main/packages/zingod-chainview/usage.md#submission)).
 
 ## 7. Indexing
 
@@ -295,7 +295,7 @@ one and reads only it, so no answer mixes two moments.
   within `depth` of it. At boot, header sync anchors `depth` below a validator's claim, so it
   stays shut until the header chain reaches that claim and the NFS has fetched the window.
 - The daemon's state (`serving`, `degraded`, `down`, …) is judged from the same load:
-  [running.md: States](./running.md#states).
+  [states](../operators/monitoring.md#states).
 
 ### `GetMempoolStream`
 
@@ -310,7 +310,7 @@ subscribers.
 ## 9. Talking to validators and peers
 
 Every request goes through one `TrafficBalancer` (`zingod-traffic`); lanes, intervals, hedge
-delays and bench times are in [its guide](../packages/zingod-traffic/usage.md).
+delays and bench times are in [its guide](https://github.com/zingolabs/zingod/blob/main/packages/zingod-traffic/usage.md).
 
 - **Members.** Each trusted validator, in `priority` tiers (0 first); then the whole peer set as
   one member below every tier (zebra picks the peer). Peers answer headers and blocks only.
@@ -339,14 +339,8 @@ delays and bench times are in [its guide](../packages/zingod-traffic/usage.md).
 
 Observation only: none of it changes a tip or what is served. State is read from one `GrpcSnapshot` at
 scrape (`zingod_*` and `zingod_chainview_*` gauges, `/status`); events are emitted where they
-happen. Alarms log once WARN when raised, once INFO when cleared:
-
-| Alarm             | Raised when                                                                         |
-| ----------------- | ----------------------------------------------------------------------------------- |
-| stale             | a `Live` validator's tip trails its own clock-based height estimate by ≥ `STALE_TIP_BLOCKS` |
-| end of service    | a validator's release halts within a week of target time from its tip (75 s, 25 s from NU7) |
-| finality paused   | > depth non-finalized blocks for 60 s with the finalized tip unmoved                          |
-| tip unvouched     | best more than one block past the last block a trusted validator vouched for (a reorg's window, §4, or every validator down under `[p2p]`) |
+happen. Alarms log once WARN when raised, once INFO when cleared
+([the alarms](../operators/monitoring.md#alarms); stale = `STALE_TIP_BLOCKS`).
 
 ## 12. Seams
 

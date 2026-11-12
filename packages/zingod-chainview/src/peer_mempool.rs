@@ -1,5 +1,5 @@
 //! Peer quorum over mempools: each live outbound peer's listing per round, what the quorum admits
-//! checked here, admitted into the view (`docs/architecture.md` §5)
+//! checked here, admitted into the view (`book/src/contributors/architecture.md` §5)
 //!
 //! ```text
 //!   each PEER_MEMPOOL_POLL ─▶ mempool(peer), every live peer ─▶ merge: listings, retention

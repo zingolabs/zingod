@@ -1,4 +1,4 @@
-//! Applied layers above a durable view (`docs/architecture.md` §7)
+//! Applied layers above a durable view (`book/src/contributors/architecture.md` §7)
 //!
 //! - [`Overlay`] = `BlockChanges` above some durable tip, per table the items they add (`imbl`)
 //! - [`OverlayView`] = an [`AppliedLayer`]'s rows over its durable view: above first, then durable

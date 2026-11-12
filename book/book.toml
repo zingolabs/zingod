@@ -1,0 +1,9 @@
+[book]
+title = "Zingod"
+authors = ["Zingo Labs"]
+language = "en"
+
+[output.html]
+site-url = "/zingod/"
+git-repository-url = "https://github.com/zingolabs/zingod"
+edit-url-template = "https://github.com/zingolabs/zingod/edit/main/book/{path}"

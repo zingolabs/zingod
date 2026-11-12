@@ -1,5 +1,5 @@
 //! [`SubmitPolicy`] + `Job`: pure submission policy, relayed by attempts until it spreads
-//! (`docs/architecture.md` §6)
+//! (`book/src/contributors/architecture.md` §6)
 //!
 //! - pure: time and observations in, steps out (`driver.rs` executes them)
 //! - `checked` = a trusted `checkadmission` accepted it first (the wallet's answer, already given)

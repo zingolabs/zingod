@@ -1,5 +1,5 @@
 //! Trusted validators' and peers' headers into the header chain, its [`HeaderChainSnapshot`] into
-//! the view and onto a watch (`docs/architecture.md` §4, usage.md `HeaderSync`)
+//! the view and onto a watch (`book/src/contributors/architecture.md` §4, usage.md `HeaderSync`)
 //!
 //! - one owner, no lock, no pool: a trusted insert = a hash lookup + nBits work
 //! - backpressure: no fetch above `ceiling(HEADER_BATCH)` (H9)
