@@ -18,6 +18,7 @@ mod lifetime;
 mod limits;
 mod memo;
 mod metrics;
+mod origin;
 mod overload;
 mod pressure;
 mod proxy_protocol;
@@ -37,6 +38,7 @@ pub use admission::AdmissionState;
 pub use health::Health;
 pub use lifetime::{Hold, Retire};
 pub use limits::{GrpcLimits, OverloadLimits};
+pub use origin::{OriginGate, OriginVerdict};
 pub use overload::OverloadCause;
 pub use proxy_protocol::TrustedProxies;
 
