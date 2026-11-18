@@ -8,6 +8,7 @@ use tonic::Code;
 use zingod_primitives::metric::Metric;
 
 use crate::admission::Refusal;
+use crate::guard::Protocol;
 use crate::lifetime::RetireReason;
 use crate::origin::OriginVerdict;
 use crate::service::{Method, Reply};
@@ -77,7 +78,10 @@ fn reply(method: Option<Method>) -> Reply {
 }
 
 pub const METRICS: &[Metric] = &[
-    Metric::counter(REQUESTS_TOTAL, "Finished requests, by method and gRPC status code"),
+    Metric::counter(
+        REQUESTS_TOTAL,
+        "Finished requests, by method, gRPC status code and protocol (grpc, grpc_web)",
+    ),
     Metric::histogram(
         DURATION_SECONDS,
         "One-reply RPC latency: admission through trailers, OK answers only, by method",
@@ -241,17 +245,9 @@ pub(crate) fn stream_rejected(refusal: Refusal) {
     metrics::counter!(ADMISSION_REJECTED_TOTAL, "reason" => refusal.label()).increment(1);
 }
 
-fn verdict_label(verdict: OriginVerdict) -> &'static str {
-    match verdict {
-        OriginVerdict::Blocked => "blocked",
-        OriginVerdict::Allowed => "allowed",
-        OriginVerdict::Default => "default",
-    }
-}
-
 /// One `Origin`-bearing (gRPC-web) request, by gate verdict (native requests never counted here)
 pub(crate) fn origin_request(verdict: OriginVerdict) {
-    metrics::counter!(ORIGIN_REQUESTS_TOTAL, "verdict" => verdict_label(verdict)).increment(1);
+    metrics::counter!(ORIGIN_REQUESTS_TOTAL, "verdict" => verdict.label()).increment(1);
 }
 
 /// One overload window: wallets hurt by cause, over `open` connections (the latch = readiness)
@@ -269,9 +265,16 @@ pub(crate) fn first_message(method: Option<Method>, elapsed: Duration) {
 }
 
 /// One stream's close-out (recorded where the body drops)
-pub(crate) fn stream_finished(method: Option<Method>, code: Code, elapsed: Duration, sent: u64) {
+pub(crate) fn stream_finished(
+    method: Option<Method>,
+    protocol: Protocol,
+    code: Code,
+    elapsed: Duration,
+    sent: u64,
+) {
     let name = method_label(method);
-    metrics::counter!(REQUESTS_TOTAL, "method" => name, "code" => code_label(code)).increment(1);
+    let labels = [("method", name), ("code", code_label(code)), ("protocol", protocol.label())];
+    metrics::counter!(REQUESTS_TOTAL, &labels).increment(1);
     // answers only (refusal = µs of no work)
     if reply(method) == Reply::One && code == Code::Ok {
         metrics::histogram!(DURATION_SECONDS, "method" => name).record(elapsed);

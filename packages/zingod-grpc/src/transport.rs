@@ -27,7 +27,7 @@ use zingod_source::ChainDataSource;
 
 use crate::admission::AdmissionState;
 use crate::connections::{ConnectionCaps, Reserved};
-use crate::guard::Guard;
+use crate::guard::{Guard, Protocol};
 use crate::health::{Health, HealthRoute};
 use crate::lifetime::{Activity, Retire, RetireReason, Retirement};
 use crate::overload;
@@ -488,8 +488,9 @@ impl<S: ChainDataSource, V: PinnedView> Shared<S, V> {
             activity.clone(),
             Arc::clone(&self.origin_gate),
         );
-        // CORS outermost (answers browser preflight), then gRPC-web framing, native gRPC through
-        let gated = cors(self.grpc_web).layer(tonic_web::GrpcWebLayer::new().layer(guard));
+        // CORS outermost (answers browser preflight), protocol tagged, gRPC-web framing, guard
+        let web = tonic_web::GrpcWebLayer::new().layer(guard);
+        let gated = cors(self.grpc_web).layer(tower::util::MapRequest::new(web, Protocol::tag));
         let service =
             TowerToHyperService::new(HealthRoute::new(gated, self.health.clone(), self.grpc_web));
         let serving = self.http.serve_connection(TokioIo::new(io), service);
@@ -1076,10 +1077,13 @@ mod tests {
         String::from_utf8_lossy(&response).to_ascii_lowercase()
     }
 
-    /// gRPC-web on: a browser preflight gets a permissive CORS grant, and native gRPC over the
-    /// same listener is untouched by the layer
+    /// gRPC-web on: a browser preflight gets a permissive CORS grant, a browser call and a native
+    /// one both reach the service, and each is counted under its own `protocol`
     #[tokio::test]
-    async fn grpc_web_answers_a_preflight_and_still_serves_native_grpc() {
+    async fn grpc_web_answers_a_preflight_and_serves_both_protocols_counted_apart() {
+        let recorder = metrics_util::debugging::DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
+        let _recording = metrics::set_default_local_recorder(&recorder);
         let server = GrpcService::new(ANY_PORT, GrpcLimits::default(), CAPACITY)
             .expect("read threads start")
             .with_grpc_web(true)
@@ -1105,8 +1109,39 @@ mod tests {
             "native gRPC decodes over h2, unaffected by the CORS / gRPC-web layer",
         );
 
+        let browser = "POST /cash.z.wallet.sdk.rpc.CompactTxStreamer/GetLightdInfo HTTP/1.1\r\n\
+             Host: zec.global\r\n\
+             Origin: https://wallet.example\r\n\
+             Content-Type: application/grpc-web+proto\r\n\
+             X-Grpc-Web: 1\r\n\
+             Content-Length: 5\r\n\
+             Connection: close\r\n\r\n\0\0\0\0\0";
+        let mut stream = tokio::net::TcpStream::connect(bind).await.expect("connects");
+        stream.write_all(browser.as_bytes()).await.expect("writes the call");
+        let mut response = Vec::new();
+        tokio::time::timeout(SCHEDULING, stream.read_to_end(&mut response))
+            .await
+            .expect("server answered and closed")
+            .expect("read");
+        let response = String::from_utf8_lossy(&response).to_ascii_lowercase();
+        assert!(response.contains("grpc-status: 14"), "gRPC-web answered UNAVAILABLE:\n{response}");
+
         cancel.cancel();
         serving.await.expect("the serve task ran");
+        // method, code, protocol → value
+        let mut counted: Vec<String> = (snapshotter.snapshot().into_vec().into_iter())
+            .filter(|(key, ..)| key.key().name() == "zingod.grpc.requests_total")
+            .map(|(key, .., value)| {
+                let labels: Vec<_> = key.key().labels().map(|label| label.value()).collect();
+                format!("{} {value:?}", labels.join(" "))
+            })
+            .collect();
+        counted.sort();
+        let want = [
+            "GetLightdInfo Unavailable grpc Counter(1)",
+            "GetLightdInfo Unavailable grpc_web Counter(1)",
+        ];
+        assert_eq!(counted, want, "one request each, counted by its wire protocol");
     }
 
     /// gRPC-web off (the default): the same preflight gets no CORS grant, so a browser is refused

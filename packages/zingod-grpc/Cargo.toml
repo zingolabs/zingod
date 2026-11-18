@@ -76,6 +76,7 @@ zingod-header-chain = { workspace = true, features = ["testing"] }
 zingod-nfs = { workspace = true, features = ["testing"] }
 zingod-grpc-snapshot = { workspace = true, features = ["testing"] }
 h2 = "0.4"
+metrics-util = { version = "0.20", default-features = false, features = ["debugging"] }
 
 [lints.rust]
 unreachable_pub = "warn"

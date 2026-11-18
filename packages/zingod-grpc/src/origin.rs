@@ -19,6 +19,16 @@ pub enum OriginVerdict {
     Blocked,
 }
 
+impl OriginVerdict {
+    pub(crate) const fn label(self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::Allowed => "allowed",
+            Self::Blocked => "blocked",
+        }
+    }
+}
+
 /// Blocked + allowed FQDN keys, disjoint (one marker per domain)
 #[derive(Debug, Default, PartialEq, Eq)]
 struct OriginSets {

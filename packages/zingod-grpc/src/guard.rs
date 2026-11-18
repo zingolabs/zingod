@@ -53,6 +53,31 @@ impl<Inner> Guard<Inner> {
     }
 }
 
+/// Wire protocol a request arrived in (request extension; absent = native gRPC)
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum Protocol {
+    Grpc,
+    GrpcWeb,
+}
+
+impl Protocol {
+    pub(crate) const fn label(self) -> &'static str {
+        match self {
+            Self::Grpc => "grpc",
+            Self::GrpcWeb => "grpc_web",
+        }
+    }
+
+    /// Tags a gRPC-web request (before `tonic_web` rewrites its content-type to native gRPC)
+    pub(crate) fn tag<B>(mut request: Request<B>) -> Request<B> {
+        let content_type = request.headers().get(http::header::CONTENT_TYPE);
+        if content_type.is_some_and(|value| value.as_bytes().starts_with(b"application/grpc-web")) {
+            request.extensions_mut().insert(Self::GrpcWeb);
+        }
+        request
+    }
+}
+
 /// Request `Origin` → host (scheme / port stripped, lowercased); absent = native client (default)
 fn origin_host(headers: &HeaderMap) -> Option<String> {
     let origin = headers.get(http::header::ORIGIN)?.to_str().ok()?;
@@ -94,6 +119,7 @@ where
         let method = Method::of_request(&request);
         let mut close = CloseOut {
             method,
+            protocol: request.extensions().get().copied().unwrap_or(Protocol::Grpc),
             started: Instant::now(),
             answered: false,
             sent: 0,
@@ -108,6 +134,7 @@ where
             Some(host) => {
                 let verdict = self.gate.verdict(&host);
                 metrics::origin_request(verdict);
+                summary::origin(&host, verdict);
                 verdict
             }
             None => OriginVerdict::Default,
@@ -178,6 +205,7 @@ pub(crate) struct Guarded<B> {
 #[derive(Debug)]
 struct CloseOut {
     method: Option<Method>,
+    protocol: Protocol,
     started: Instant,
     answered: bool,
     sent: u64,
@@ -247,7 +275,8 @@ impl Drop for CloseOut {
             true => Code::Ok,
             false => Code::Cancelled,
         });
-        metrics::stream_finished(self.method, code, self.started.elapsed(), self.sent);
+        let elapsed = self.started.elapsed();
+        metrics::stream_finished(self.method, self.protocol, code, elapsed, self.sent);
         summary::finished(self.method, code, self.message.as_deref().unwrap_or_default());
     }
 }

@@ -53,7 +53,8 @@ server. Policies take effect within a second and survive restarts; the most spec
 | `zingod origin reset <domain>` | remove its policy                                         |
 | `zingod origin`                | list the policies                                         |
 
-An allowed origin still gets the same limits as everyone else.
+An allowed origin still gets the same limits as everyone else. Once a minute, an `Origin requests`
+log line names the 10 busiest origins; `origin="(other)"` sums the rest.
 
 ## Overload
 
