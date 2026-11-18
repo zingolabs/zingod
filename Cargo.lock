@@ -5596,6 +5596,7 @@ dependencies = [
  "hyper-util",
  "ipnet",
  "metrics",
+ "metrics-util",
  "netlink-packet-core",
  "netlink-packet-sock-diag",
  "netlink-sys",
