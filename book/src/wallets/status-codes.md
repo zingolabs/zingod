@@ -5,7 +5,7 @@ status; it is reported in the response ([details](methods.md#transactions)).
 
 | Code                 | When                                                                                                  | Client action                     |
 | -------------------- | ----------------------------------------------------------------------------------------------------- | --------------------------------- |
-| `UNAVAILABLE`        | the server is starting, at capacity, or cannot reach its data sources; a stream had nothing to send for 5 minutes | retry with backoff                |
+| `UNAVAILABLE`        | the server is starting, at capacity, or cannot reach its data sources                                 | retry with backoff                |
 | `NOT_FOUND`          | the height, hash or txid is not in the chain, or is above the index's tip                             | do not retry the same request     |
 | `OUT_OF_RANGE`       | `GetBlockRange` reached the tip, after sending every block up to it                                   | retry once the tip advances       |
 | `INVALID_ARGUMENT`   | malformed request, height above the protocol maximum, invalid or wrong-network address, invalid `poolTypes` | fix the request                   |
