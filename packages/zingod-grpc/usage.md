@@ -222,11 +222,13 @@ stall-watch ticket and its close-out metrics, so all three end when hyper drops 
 Every read that touches index files runs on the read pool (`read_pool.rs`): `read_threads`
 threads of its own, oldest read first, never a runtime worker and never tokio's blocking pool.
 That pool belongs to sync's index writes and the `/metrics` scrape, so a wallet surge cannot delay
-the tip or blind monitoring. At most `read_threads` reads are in flight: a read whose request was
+the tip or blind monitoring. Address-history scans (`ReadPool::scan`, the three
+`transparent_address` index reads) have `scan_threads` threads apart, so they never queue a block
+read. At most `read_threads` reads are in flight: a read whose request was
 cancelled before a thread took it is skipped, so cancellations cannot stack reads. A read's wait
-for a thread is `read_wait_seconds`; the adaptive limit never sees it (a slow disk fills held
+for a thread is `read_wait_seconds{pool}` (`read` / `scan`); the adaptive limit never sees it (a slow disk fills held
 slots instead, and refusals reach the overload latch). Sizing per device:
-[operators: index reads](../../book/src/operators/dos-protection.md#index-reads).
+[operators: settings](../../book/src/operators/dos-protection.md#settings).
 
 ### Answered without a read
 
@@ -272,7 +274,7 @@ since the last dump); the first dump only primes; a closed one drops out.
 
 A trusted proxy's sockets are skipped (their state = the proxy's hop). A refused dump stops the task
 with one warning; serving never depends on it. Rules:
-[operators: uplink](../../book/src/operators/dos-protection.md#uplink).
+[operators: overload](../../book/src/operators/dos-protection.md#overload).
 
 ### Serving log
 

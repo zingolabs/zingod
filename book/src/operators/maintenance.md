@@ -29,30 +29,6 @@ so dashboards can tell planned maintenance from a crash.
 
 Both commands are idempotent.
 
-## Overload
-
-A node that is persistently short of capacity reports `down` with reason `overloaded`, so load
-balancers move traffic away from it. Thresholds are set under `[grpc.overload]` (0 disables a
-cause). A cause is raised after its signal stays above the threshold for the enter time, and
-cleared after it stays below half the threshold for the exit time.
-
-| Cause                        | Signal, per minute                                            | Enter / exit |
-| ---------------------------- | ------------------------------------------------------------- | ------------ |
-| `CPU pressure`, `IO pressure` | share of time Zingod's cgroup waited (Linux PSI)             | 2 / 3 min    |
-| `refusing work`              | at least 10% of requests refused, at 1/s or more (exit: < 2%) | 5 / 5 min    |
-
-Override the detector on a running node, without a restart:
-
-```sh
-zingod overload off                  # never report overloaded
-zingod overload on                   # back to automatic
-zingod overload set <key> <value>    # override a threshold, e.g. cpu_pressure_percent 40
-zingod overload unset <key>          # back to the config's value
-```
-
-Overrides are stored in `state_dir` and persist across restarts. Zingod applies them within a
-second and logs a warning while any is in effect.
-
 ## systemd
 
 ```ini

@@ -116,9 +116,11 @@ max_connections_per_ip = 128
 # 1.0 = none (a load test from a few addresses)
 work_share_per_ip = 0.0625
 # threads reading index files for wallets, oldest read first: the disk under the indexes' useful
-# parallelism (NVMe 32 to 64, SATA SSD 16, HDD 4)
-# - https://zingolabs.github.io/zingod/operators/dos-protection.html#index-reads
+# parallelism
+# - https://zingolabs.github.io/zingod/operators/dos-protection.html#settings
 read_threads = 32
+# threads for transparent-address history reads, apart so a flood of them never slows block reads
+scan_threads = 4
 # data its client does not read for this long closes its connection (no cap on a stream's length:
 # the client's grpc-timeout is its deadline)
 unread_timeout_secs = 300

@@ -48,7 +48,6 @@ Defaults are shown; operators can change them.
 | idle connection                      | closed after 30 minutes                    |
 | in-flight streams after a GOAWAY     | 10 minutes to finish                       |
 | client not reading a stream          | connection closed after 5 minutes          |
-| stream with nothing to send          | ends `UNAVAILABLE` after 5 minutes (except `GetMempoolStream`) |
 
 Streams have no total time limit, so a full-chain `GetBlockRange` runs for as long as the client
 keeps reading. gRPC libraries reconnect after a GOAWAY on their own. A server being taken out of

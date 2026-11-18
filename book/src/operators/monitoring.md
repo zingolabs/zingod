@@ -8,7 +8,7 @@ Zingod reports a single state. The same value appears in `/readyz`, `/status`, t
 | State          | Meaning                                                                                   | `/readyz` |
 | -------------- | ----------------------------------------------------------------------------------------- | --------- |
 | `held`         | an operator ran [`zingod hold`](maintenance.md#operator-hold)                             | `503`     |
-| `down`         | cannot serve: the server is stalled or [overloaded](maintenance.md#overload), startup is waiting for a validator, or the tip is unverified and stale | `503`     |
+| `down`         | cannot serve: the server is stalled, startup is waiting for a validator, or the tip is unverified and stale; or [overloaded](dos-protection.md#overload): still serving, new wallets belong elsewhere | `503`     |
 | `provisioning` | starting up, or installing an [index snapshot](first-sync.md#index-snapshot)              | `503`     |
 | `degraded`     | serving a recent tip that no trusted validator has confirmed (p2p peers supplied it)      | `200`     |
 | `syncing`      | serving, but behind the best block; or no validator's mempool is available yet            | `503`     |
@@ -31,8 +31,8 @@ Zingod reports a single state. The same value appears in `/readyz`, `/status`, t
 | `serving`                    | `{start, mbps}`: gRPC egress over the last full 10-minute UTC window               |
 | `degraded`, `down`, `held`   | `{reason, message}`                                                                |
 
-`reason` is one of `no_validator_reachable`, `tip_unvouched`, `tip_stale`, `runtime_stalled`,
-`overloaded`, `goaway_pending` or `goaway_sent`.
+`reason` is one of `no_validator_reachable`, `tip_unvouched`, `runtime_stalled`, `overloaded`,
+`goaway_pending` or `goaway_sent`.
 
 ## Endpoints
 
@@ -107,13 +107,17 @@ ts=… level=info target=zingod::telemetry::progress message="Syncing blocks" he
 
 ### The `Serving` line
 
-Once a minute, the gRPC server logs a `Serving` summary: `rps` (streams completed per second) and
-`conns` (open connections). It is logged at WARN if, during that minute, any request failed or
-was refused, took more than a second to its first response (`slow`), stalled (`stalled`), or a
-connection was refused at a limit (`conns_refused`). These fields appear only when non-zero.
+Once a minute, the gRPC server logs a `Serving` summary: `rps` (requests completed per second)
+and `conns` (open connections). If any request was refused (`UNAVAILABLE`, `RESOURCE_EXHAUSTED`)
+or failed (`INTERNAL`, `UNKNOWN`, `DATA_LOSS`), or a connection was
+[evicted](dos-protection.md#limits) that minute, it is logged at WARN with `refused`, `failed`
+and `evicted` counts. The first failure of each minute is also logged as `Request failed` (ERROR)
+with its message. Everything else is in the [metrics](#metrics).
 
-- `INTERNAL`, `UNKNOWN` and `DATA_LOSS` count as failures. `UNAVAILABLE` and
-  `RESOURCE_EXHAUSTED` count as refusals. Other codes are client errors, counted in
-  `zingod_grpc_requests_total{code}`.
-- The first failure of each minute is also logged as `Request failed` (ERROR), and the first
-  refusal not caused by capacity as `Request unavailable` (WARN).
+Load events, each logged once as it starts and ends (see [Load and DoS protection](dos-protection.md)):
+
+| Starts (WARN)                                 | Ends (INFO)            | Fields                                  |
+| --------------------------------------------- | ---------------------- | --------------------------------------- |
+| `Work limit lowered`: the CPU fell behind     | `Work limit restored`  | `limit`, `cpu_wait_ms`                  |
+| `Uplink congested`                            | `Uplink clear`         | `queue_delay_ms`, `retransmitted_percent` |
+| `Overload latched`: `/readyz` 503             | `Overload cleared`     | `refused_percent`, `network_percent`, `connections` |
