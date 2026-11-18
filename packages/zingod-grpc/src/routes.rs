@@ -1,4 +1,5 @@
-//! One module per route group, its handlers (registry + dispatch: [`crate::service`])
+//! One module per route group, its handlers (registry + dispatch: [`crate::service`]; index reads
+//! on [`crate::read_pool`])
 
 mod args;
 pub(super) mod blocks;

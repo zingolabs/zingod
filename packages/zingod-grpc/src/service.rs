@@ -13,7 +13,6 @@ use std::{
     num::NonZeroUsize,
     sync::{Arc, OnceLock},
     task::{Context, Poll},
-    time::Duration,
 };
 
 use futures::future::BoxFuture;
@@ -27,14 +26,12 @@ use zingod_source::ChainDataSource;
 use zingod_sync::IndexKind;
 use zingod_traffic::TrafficBalancer;
 
-use crate::admission::Class;
-use crate::deadline::Bounds;
-use crate::read_lanes::ReadLanes;
+use crate::deadline;
+use crate::read_pool::ReadPool;
 use crate::routes::{
     blocks, deprecated_nullifiers, info, mempool, transactions, transparent_address, tree_state,
 };
 use crate::wire;
-use crate::GrpcLimits;
 
 /// Every method's path prefix (`/{service}/{method}`)
 const SERVICE: &str = "/cash.z.wallet.sdk.rpc.CompactTxStreamer/";
@@ -67,11 +64,10 @@ pub(crate) enum Method {
     GetStandardFee,
 }
 
-/// One method's policy: admission pool, reply shape (its latency metric), the index whose view
-/// its handler reads (`None` = reads none: always served)
+/// One method's policy: reply shape (its latency metric), the index whose view its handler reads
+/// (`None` = reads none: always served)
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Route {
-    pub(crate) class: Class,
     pub(crate) reply: Reply,
     pub(crate) index: Option<IndexKind>,
 }
@@ -87,40 +83,38 @@ pub(crate) enum Reply {
 impl Method {
     /// The registry's policy columns: one arm per method
     pub(crate) const fn route(self) -> Route {
-        use Class::{Subscription, Work};
         use IndexKind::{CompactBlock, TransparentAddress, TreeState};
         use Method::*;
         use Reply::{One, Stream};
 
-        let (class, reply, index) = match self {
-            GetLatestBlock => (Work, One, None),
-            GetBlock => (Work, One, Some(CompactBlock)),
-            GetBlockRange => (Work, Stream, Some(CompactBlock)),
+        let (reply, index) = match self {
+            GetLatestBlock => (One, None),
+            GetBlock => (One, Some(CompactBlock)),
+            GetBlockRange => (Stream, Some(CompactBlock)),
             // TODO: REMOVE — deprecated alias of `GetBlockRange` (pepper-sync still calls it)
-            GetBlockRangeNullifiers => (Work, Stream, Some(CompactBlock)),
-            GetTreeState => (Work, One, Some(TreeState)),
-            GetLatestTreeState => (Work, One, Some(TreeState)),
-            GetSubtreeRoots => (Work, Stream, Some(TreeState)),
-            GetAddressUtxos => (Work, One, Some(TransparentAddress)),
-            GetAddressUtxosStream => (Work, Stream, Some(TransparentAddress)),
-            GetTaddressBalance => (Work, One, Some(TransparentAddress)),
-            GetTaddressBalanceStream => (Work, One, Some(TransparentAddress)),
+            GetBlockRangeNullifiers => (Stream, Some(CompactBlock)),
+            GetTreeState => (One, Some(TreeState)),
+            GetLatestTreeState => (One, Some(TreeState)),
+            GetSubtreeRoots => (Stream, Some(TreeState)),
+            GetAddressUtxos => (One, Some(TransparentAddress)),
+            GetAddressUtxosStream => (Stream, Some(TransparentAddress)),
+            GetTaddressBalance => (One, Some(TransparentAddress)),
+            GetTaddressBalanceStream => (One, Some(TransparentAddress)),
             // index names the txs, a validator holds the bytes
             // (`book/src/contributors/architecture.md` §1)
-            GetTaddressTransactions => (Work, Stream, Some(TransparentAddress)),
+            GetTaddressTransactions => (Stream, Some(TransparentAddress)),
             // TODO: REMOVE — deprecated alias of `GetTaddressTransactions` (pepper-sync calls it)
-            GetTaddressTxids => (Work, Stream, Some(TransparentAddress)),
+            GetTaddressTxids => (Stream, Some(TransparentAddress)),
             // one random entry per attempt, watched until it spreads
             // (`book/src/contributors/architecture.md` §6)
-            SendTransaction => (Work, One, None),
-            GetMempoolTx => (Work, Stream, None),
-            // open until the served tip moves, silent between arrivals
-            GetMempoolStream => (Subscription, Stream, None),
-            GetTransaction => (Work, One, None),
-            GetLightdInfo => (Work, One, None),
-            GetStandardFee => (Work, One, None),
+            SendTransaction => (One, None),
+            GetMempoolTx => (Stream, None),
+            GetMempoolStream => (Stream, None),
+            GetTransaction => (One, None),
+            GetLightdInfo => (One, None),
+            GetStandardFee => (One, None),
         };
-        Route { class, reply, index }
+        Route { reply, index }
     }
 
     /// Wire name (= the `method` metric label)
@@ -145,16 +139,14 @@ impl Method {
         request.extensions().get::<Self>().copied()
     }
 
+    /// Open until the served tip moves, idle between arrivals: no work slot, no latency to time
+    pub(crate) fn is_subscription(self) -> bool {
+        matches!(self, Self::GetMempoolStream)
+    }
+
     #[cfg(test)]
     pub(crate) fn path(self) -> String {
         format!("{SERVICE}{}", self.name())
-    }
-}
-
-impl Route {
-    /// Open until the next block, silent between arrivals: never idles out, no latency to time
-    pub(crate) fn is_subscription(self) -> bool {
-        self.class == Class::Subscription
     }
 }
 
@@ -183,12 +175,11 @@ pub(crate) const STARTING: &str = "starting: not routed yet";
 /// [`RouteDeps`] + what every request shares, one `Arc` (a request clones one pointer)
 ///
 /// - `routes` set once, after bind (empty = every method `UNAVAILABLE` [`STARTING`])
-/// - `reads` process-wide (every index read on the blocking pool under its lane's permit)
+/// - `reads` process-wide (every index read on a read thread: `read_pool.rs`)
 struct Wired<S: ChainDataSource, V> {
     routes: OnceLock<RouteDeps<S, V>>,
-    reads: ReadLanes,
     tree_states: Arc<tree_state::Memos<V>>,
-    silent_timeout: Duration,
+    reads: ReadPool,
 }
 
 /// Every `CompactTxStreamer` method, dispatched by path (the tower service each connection runs;
@@ -202,10 +193,8 @@ impl<S: ChainDataSource, V> Clone for Dispatch<S, V> {
 }
 
 impl<S: ChainDataSource, V: PinnedView> Dispatch<S, V> {
-    pub(crate) fn new(limits: &GrpcLimits) -> Self {
-        let (reads, silent_timeout) = (ReadLanes::new(limits), limits.silent_timeout);
-        let routes = OnceLock::new();
-        Self(Arc::new(Wired { routes, reads, tree_states: Arc::default(), silent_timeout }))
+    pub(crate) fn new(reads: ReadPool) -> Self {
+        Self(Arc::new(Wired { routes: OnceLock::new(), tree_states: Arc::default(), reads }))
     }
 
     pub(crate) fn routing(&self) -> Routing<S, V> {
@@ -266,14 +255,13 @@ impl<S: ChainDataSource, V: PinnedView> Wired<S, V> {
         use wire::{decode, decode_each};
         use Method::*;
 
-        let request = wire::collect_request(body, method).await?;
-        let reads = self.reads.clone();
+        let request = wire::collect_request(body, Some(method)).await?;
         let grpc_snapshot = routes.grpc_snapshots.load();
         let served = || grpc_snapshot.served().map_err(wire::unavailable);
         let compact_blocks = || {
             let served = served()?;
             let reader = view(served.views().compact_block(), method);
-            Ok::<_, Status>(blocks::CompactBlocks { served, reader })
+            Ok::<_, Status>(blocks::CompactBlocks { served, reader, reads: self.reads.clone() })
         };
         let tree_states = || {
             // the NFS publish itself: memo identity (`served()` = its served tip)
@@ -281,25 +269,24 @@ impl<S: ChainDataSource, V: PinnedView> Wired<S, V> {
             let indexed = grpc_snapshot.indexed().ok_or_else(nothing)?;
             let reader = view(indexed.served().views().tree_state(), method);
             let (indexed, memos) = (Arc::clone(indexed), Arc::clone(&self.tree_states));
-            let reads = reads.clone();
-            Ok::<_, Status>(tree_state::TreeStateReads { indexed, reader, reads, memos })
+            let reads = self.reads.clone();
+            Ok::<_, Status>(tree_state::TreeStateReads { indexed, reader, memos, reads })
         };
         let address_index = || {
             let served = served()?;
             let reader = view(served.views().transparent_address(), method);
             let reader = reader.as_of(served.tip().height).with_max_rows(routes.max_address_rows);
-            let network = served.params().network;
-            Ok::<_, Status>(transparent_address::AddressIndex { reader, network })
+            let (network, reads) = (served.params().network, self.reads.clone());
+            Ok::<_, Status>(transparent_address::AddressIndex { reader, network, reads })
         };
 
         match method {
             GetLatestBlock => Ok(blocks::get_latest_block(served()?)),
-            GetBlock => blocks::get_block(compact_blocks()?, decode(&request)?, &reads).await,
-            GetBlockRange => blocks::get_block_range(compact_blocks()?, decode(&request)?, reads),
+            GetBlock => blocks::get_block(compact_blocks()?, decode(&request)?).await,
+            GetBlockRange => blocks::get_block_range(compact_blocks()?, decode(&request)?),
             GetBlockRangeNullifiers => deprecated_nullifiers::get_block_range_nullifiers(
                 compact_blocks()?,
                 decode(&request)?,
-                reads,
             ),
             GetTreeState => tree_state::get_tree_state(&tree_states()?, decode(&request)?).await,
             GetLatestTreeState => tree_state::get_latest_tree_state(&tree_states()?).await,
@@ -308,20 +295,19 @@ impl<S: ChainDataSource, V: PinnedView> Wired<S, V> {
             }
             GetAddressUtxos => {
                 let index = address_index()?;
-                transparent_address::get_address_utxos(index, decode(&request)?, &reads).await
+                transparent_address::get_address_utxos(index, decode(&request)?).await
             }
             GetAddressUtxosStream => {
                 let index = address_index()?;
-                transparent_address::get_address_utxos_stream(index, decode(&request)?, &reads)
-                    .await
+                transparent_address::get_address_utxos_stream(index, decode(&request)?).await
             }
             GetTaddressBalance => {
                 let index = address_index()?;
-                transparent_address::get_taddress_balance(index, decode(&request)?, &reads).await
+                transparent_address::get_taddress_balance(index, decode(&request)?).await
             }
             GetTaddressBalanceStream => {
                 let (index, request) = (address_index()?, decode_each(&request)?);
-                transparent_address::get_taddress_balance_stream(index, request, &reads).await
+                transparent_address::get_taddress_balance_stream(index, request).await
             }
             GetTaddressTransactions | GetTaddressTxids => {
                 transparent_address::get_taddress_transactions(
@@ -329,7 +315,6 @@ impl<S: ChainDataSource, V: PinnedView> Wired<S, V> {
                     routes.validators.clone(),
                     Arc::clone(&grpc_snapshot),
                     decode(&request)?,
-                    &reads,
                 )
                 .await
             }
@@ -341,7 +326,7 @@ impl<S: ChainDataSource, V: PinnedView> Wired<S, V> {
             GetTransaction => {
                 let validators = &routes.validators;
                 let filter = decode(&request)?;
-                transactions::get_transaction(validators, &grpc_snapshot, &reads, filter).await
+                transactions::get_transaction(validators, &grpc_snapshot, &self.reads, filter).await
             }
             GetLightdInfo => info::get_lightd_info(&grpc_snapshot, routes.network, routes.version),
             GetStandardFee => info::get_standard_fee(&grpc_snapshot, routes.network),
@@ -383,11 +368,10 @@ where
         let wired = Arc::clone(&self.0);
         let path = request.uri().path().to_owned();
         let method = Method::of_request(&request);
-        let bounded = method.is_none_or(|method| !method.route().is_subscription());
-        let bounds = Bounds::of(request.headers(), bounded.then_some(wired.silent_timeout));
-        Box::pin(
-            async move { Ok(bounds.apply(wired.answer(method, &path, request.into_body())).await) },
-        )
+        let deadline = deadline::of(request.headers());
+        Box::pin(async move {
+            Ok(deadline::apply(deadline, wired.answer(method, &path, request.into_body())).await)
+        })
     }
 }
 

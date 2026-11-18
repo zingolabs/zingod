@@ -59,6 +59,12 @@ rcgen.workspace = true
 aws-lc-rs = "1.19.0"
 tonic-web = "0.14"
 tower-http = { version = "0.6", features = ["cors"] }
+rayon.workspace = true
+netlink-packet-sock-diag = { version = "0.5", features = ["rich_nlas"] }
+netlink-sys = "0.9"
+netlink-packet-core = "0.9"
+tokio-metrics = { version = "0.5.2", default-features = false }
+hyper.workspace = true
 
 [dev-dependencies]
 tempfile = { workspace = true }

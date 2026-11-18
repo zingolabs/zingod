@@ -49,15 +49,15 @@ use zingod_source::{BlockchainInfo, ChainDataSource};
 use zingod_sync::{FinalizedFollower, IndexKind};
 use zingod_traffic::{Push, TrafficBalancer, TrustedValidatorId};
 
-use crate::command::{origin, overload};
+use crate::command::origin;
 use crate::config::{DaemonConfig, IndexConfig, ServeTls, TrustedValidatorConfig, ValidatorClient};
 use crate::error::IndexerError;
 use crate::health::{admin, DaemonStatus, Sources};
 use crate::telemetry::logging::component;
 use crate::telemetry::{disk, egress, progress, OpenedIndex};
 
+pub(crate) mod capacity;
 mod chainview;
-pub(crate) mod fd_limit;
 pub(crate) mod index_snapshot;
 mod peers;
 
@@ -79,7 +79,7 @@ pub(crate) async fn start(
 ) -> Result<JoinHandle<Result<(), IndexerError>>, IndexerError> {
     warn!("In development, not for production mainnet use");
     let signals = shutdown_signals();
-    fd_limit::raise_for(config.grpc.max_connections)?;
+    capacity::raise_fd_limit()?;
     match config.validator_client {
         ValidatorClient::LegacyRpc => {
             start_over(config, chainview::legacy_client, status, signals).await
@@ -138,11 +138,13 @@ async fn listen<S: ChainDataSource>(
     tasks: &mut JoinSet<TaskExit>,
 ) -> Result<Serving<S>, IndexerError> {
     let origin_gate = zingod_grpc::OriginGate::new();
-    let mut server = GrpcService::new(config.serve.grpc_listen_address, config.grpc.clone())
-        .with_retire(status.retire().clone())
-        .with_grpc_web(config.serve.grpc_web)
-        .with_origin_gate(Arc::clone(&origin_gate))
-        .with_health(Arc::clone(status) as Arc<dyn zingod_grpc::Health>);
+    let capacity = capacity::host_capacity()?;
+    let mut server =
+        GrpcService::new(config.serve.grpc_listen_address, config.grpc.clone(), capacity)?
+            .with_retire(status.retire().clone())
+            .with_grpc_web(config.serve.grpc_web)
+            .with_origin_gate(Arc::clone(&origin_gate))
+            .with_health(Arc::clone(status) as Arc<dyn zingod_grpc::Health>);
     let span = component("Grpc");
     let (endpoint, network) = (config.serve.grpc_listen_address, network_name(config.network));
     // logged in the config's own spelling
@@ -159,7 +161,6 @@ async fn listen<S: ChainDataSource>(
         server = server.with_tls(tls);
     }
     let serving = Serving { routing: server.routing(), admission: server.admission() };
-    overload::spawn(server.admission(), &config.serve.state_dir, config.grpc.overload.clone());
     origin::spawn(origin_gate, &config.serve.state_dir);
     let server = server.bind().await?;
     span.in_scope(|| info!(%endpoint, network, tls = mode, "Listening"));
@@ -639,8 +640,6 @@ mod tests {
     /// - the gRPC listener bound during boot is closed by then
     #[tokio::test]
     async fn a_shutdown_signal_during_boot_stops_the_daemon_cleanly() {
-        use std::num::NonZeroUsize;
-
         let dir = tempfile::tempdir().expect("tempdir");
         let probe = std::net::TcpListener::bind("127.0.0.1:0").expect("a free port");
         let (grpc, validator) = (probe.local_addr().expect("local addr"), "127.0.0.1:1");
@@ -652,7 +651,6 @@ mod tests {
         file.trusted_validators = vec![trusted];
         file.serve.grpc_listen_address = grpc;
         file.serve.state_dir = Some(dir.path().join("state"));
-        file.grpc.max_connections = NonZeroUsize::new(16).expect("non-zero");
         let config = file.resolve().expect("resolves");
         let status = Arc::new(DaemonStatus::new(config.network, []));
         let booting = tokio::spawn(start(config, Arc::clone(&status)));

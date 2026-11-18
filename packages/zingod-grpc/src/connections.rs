@@ -6,11 +6,12 @@
 
 use std::collections::HashMap;
 use std::net::IpAddr;
+use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
 
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
-use crate::{metrics, GrpcLimits};
+use crate::metrics;
 
 #[derive(Debug)]
 pub(crate) struct ConnectionCaps {
@@ -27,13 +28,12 @@ pub(crate) struct Reserved {
 }
 
 impl ConnectionCaps {
-    pub(crate) fn new(limits: &GrpcLimits) -> Self {
-        let total_max = limits.max_connections.get();
+    pub(crate) fn new(total_max: NonZeroUsize, per_client_max: NonZeroUsize) -> Self {
         Self {
-            total: Arc::new(Semaphore::new(total_max)),
-            total_max,
+            total: Arc::new(Semaphore::new(total_max.get())),
+            total_max: total_max.get(),
             per_client: Arc::new(Mutex::new(HashMap::new())),
-            per_client_max: limits.max_connections_per_ip.get(),
+            per_client_max: per_client_max.get(),
         }
     }
 
@@ -42,7 +42,7 @@ impl ConnectionCaps {
         self.total_max.saturating_sub(self.total.available_permits())
     }
 
-    /// `None` = at `max_connections` (caller drops the socket)
+    /// `None` = at `total_max` (caller drops the socket)
     pub(crate) fn reserve(&self) -> Option<Reserved> {
         match Arc::clone(&self.total).try_acquire_owned() {
             Ok(permit) => Some(Reserved { _slot: permit }),
@@ -95,22 +95,12 @@ impl Drop for ConnectionGuard {
 
 #[cfg(test)]
 mod tests {
-    use std::num::NonZeroUsize;
-
     use super::*;
-
-    fn caps(max_connections: usize, max_connections_per_ip: usize) -> ConnectionCaps {
-        let non_zero = |cap| NonZeroUsize::new(cap).expect("non-zero cap");
-        ConnectionCaps::new(&GrpcLimits {
-            max_connections: non_zero(max_connections),
-            max_connections_per_ip: non_zero(max_connections_per_ip),
-            ..GrpcLimits::default()
-        })
-    }
 
     #[test]
     fn connections_are_admitted_up_to_both_caps_and_every_slot_returns_on_close() {
-        let caps = caps(3, 2);
+        let non_zero = |cap| NonZeroUsize::new(cap).expect("non-zero cap");
+        let caps = ConnectionCaps::new(non_zero(3), non_zero(2));
         let (alice, bob): (IpAddr, IpAddr) = ([203, 0, 113, 1].into(), [203, 0, 113, 2].into());
         let admit = |client| caps.reserve().and_then(|reserved| caps.admit(reserved, client));
 
@@ -126,7 +116,7 @@ mod tests {
         );
         assert!(bobs.is_some(), "bob counted apart from alice: {bobs:?}");
         assert_eq!(caps.held(), 3, "a refused client's reservation returned");
-        assert!(past_total.is_none(), "4th connection over max_connections 3: {past_total:?}");
+        assert!(past_total.is_none(), "4th connection over the total 3: {past_total:?}");
         alices.remove(0);
         assert!(admit(alice).is_some(), "one of alice's closed: her next admitted");
 

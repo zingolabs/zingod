@@ -92,9 +92,9 @@ Every method is one `Method` variant in `service.rs`; its name is its wire name 
 metric label. A new RPC is:
 
 1. a `Method` variant,
-2. its arm in `Method::route`: its admission `Class` (`Work`, or `Subscription` for a stream
-   that idles between arrivals: own pool, never cut for silence, no latency recorded) and the
-   index whose view its handler reads (`None` = reads none, so never disabled),
+2. its arm in `Method::route`: its `Reply` and the index whose view its handler reads (`None` =
+   reads none, so never disabled); every method but `GetMempoolStream`
+   (`Method::is_subscription`: idle between arrivals) takes a work slot,
 3. its arm in `Wired::handle`, which hands the handler its decoded request (`wire::decode`, or
    `wire::decode_each` for a client stream); the handler returns `Result<Response<Body>, Status>`
    built with `wire::unary_response`, `wire::streamed_response` or `wire::streaming`, never by
@@ -121,13 +121,35 @@ accept loop is zingod's. Outermost first, per connection after the first three:
 ```text
 accept ─ total cap ─ PROXY header (trusted peers) ─ per-client cap ─ TLS ─ h2 / HTTP/1.1
   ─ health (resolves the RPC) ─ CORS + gRPC-web (with_grpc_web) ─ guard (metrics, admission,
-    origin gate, stall watch) ─ dispatch (grpc-timeout, silence, request body) ─ handler
+    origin gate, stall watch) ─ dispatch (grpc-timeout, request body) ─ handler
 ```
 
 The guard (`guard.rs`) wraps each response body once: the body owns its admission slot, its
-stall-watch ticket and its close-out metrics, so all three end together when hyper drops it (a
-stream ending or its client disconnecting). What each `[grpc]` cap bounds:
-[the example config](../../book/src/operators/zingod.toml).
+stall-watch ticket and its close-out metrics, so all three end when hyper drops it.
+
+- **Slot** held for the stream's life (bounds work in progress; freed per message, the 2-core
+  bench admitted past its CPU: 7× the failed sessions).
+- **Client share**: one `stall::Client` (IPv4 address / IPv6 /64) has ≤
+  `GrpcLimits::work_share_per_ip` of the limit (`WorkShare::of`, ≥ 1) as live work streams
+  (`AdmissionState::clients`, counted until the `Slot` drops, reclaimed or not: no
+  reclaim-then-reopen growth; entry gone at 0); refused past it = `Refusal::ClientShare`, never
+  the overload's (one client cannot take a node out of rotation).
+- **Owing** = handed a frame, not polled since. hyper 1.10 (`PipeToSendStream`) polls a body only
+  once its last frame fits the client's window, so owing = waiting on the client (≈ 2 messages
+  buffered).
+- **Reclaim** (`stall::reclaim_idle`, every 250 ms while `AdmissionState::pressed`): a stream
+  owing past `stall::GRACE` (1 s) loses its slot (`Claim::held` swapped, so the sweep and the
+  drop never both release). A stream leaves the owing list under the watch's lock before it
+  resumes; resuming takes a slot back even past the limit (never refused mid-stream).
+- **Parked memory** (`stall::Parked`): each owing ticket charges 4 KiB + 2 × its frame against
+  `HostCapacity::parked_bytes`; over it, the client (IPv4 address / IPv6 /64) owing most loses
+  its connection owing most (only the connection can go: hyper never polls a stalled body).
+- **Body before admission**: the guard collects the request body whole (`wire::collect_request`:
+  method cap, 30 s) before `admit`, its bytes charged meanwhile (`stall::Arriving`), so a
+  headers-only or trickled request holds no work slot and its buffer stays in the parked budget.
+- **Hardware-sized caps** are no config: `HostCapacity` (zingod derives it from the open-file
+  limit and memory, `daemon/capacity.rs`), `adaptive::WORK_CEILING`, 100 streams per connection.
+  The rest: [the example config](../../book/src/operators/zingod.toml).
 
 - **Health** (`with_health(Arc<dyn Health>)`): `GET /readyz` (`200` / `503`) and `GET /status`
   (always `200`), answered before admission over HTTP/1.1 or h2, so they never take a work slot.
@@ -141,8 +163,9 @@ stream ending or its client disconnecting). What each `[grpc]` cap bounds:
 - **Origin gate** (`with_origin_gate(Arc<OriginGate>)`, read in `guard.rs`): a request's `Origin`
   → `block` (`PermissionDenied` before admission), else the normal admission path; `allow` only
   carves a host out of a blocked parent, never lifts a cap (`Origin` is client-settable). A
-  missing `Origin` (native clients) is default and uncounted. Markers are set operator-side (`zingod origin`) and swapped
-  whole each second; `verdict` folds an incoming host to the most-specific marker covering it.
+  missing `Origin` (native clients) is default and uncounted. Markers are set operator-side
+  (`zingod origin`) and swapped whole each second; `verdict` folds an incoming host to the
+  most-specific marker covering it.
 - **TLS** (`with_tls(Tls::load(files)?)` or `with_tls(Tls::self_signed(dir, listen)?)`): rustls
   with the aws-lc-rs provider, ALPN `h2` then `http/1.1` (load-balancer monitors connect over
   HTTPS/1.1). A missing or mismatched pair fails `Tls::load`, never plaintext. The files are
@@ -160,14 +183,19 @@ stream ending or its client disconnecting). What each `[grpc]` cap bounds:
   gets the same GOAWAY + grace, those open then and each one accepted while held. A repeated
   `hold` keeps the first deadline; `resume()` lifts it. `Retire::state()` = `Hold::Off`,
   `Draining` or `Drained`.
-- **Adaptive limit.** Work streams admitted at once follow measured latency (Netflix
-  concurrency-limits' Gradient2). A sample is the server's time to produce one message (admission
-  to the first DATA frame, then poll to poll), so a client's backpressure never counts. Each
-  window (≥ 500 ms, ≥ 10 samples) sets `limit × clamp(1.5 × baseline / mean, 0.5, 1) + √limit`,
-  smoothed at 0.2, between 32 and `max_work_streams`; a window that peaked below half the limit
-  changes nothing.
-- **Overload report.** `GrpcService::admission()` → `AdmissionState::overload()` gives the
-  first latched [overload](#overload) cause, moved once a minute.
+- **Adaptive limit** (`adaptive.rs`, Netflix concurrency-limits' Gradient2). The input is CPU
+  queueing: every connection and stream task is spawned through one `tokio_metrics::TaskMonitor`
+  (`transport.rs`'s `Timed` executor), and each 500 ms window's mean woken → polled delay is a
+  sample (≥ 10 wakes, else skipped). A task waiting on a read, a client or the network is not
+  ready, so none of those count. Every 10 windows (5 s) a decision takes their upper median (a
+  block rush moves ≤ 4); over the 100 ms budget three decisions running (15 s) shrinks the limit
+  by `clamp(budget / median, 0.5, 1)`, smoothed at 0.2, never under 128; each decision not over
+  grows it 10 % toward `WORK_CEILING` (≈ 2.5 min from the floor). Gradient2 proper times whole
+  requests (queueing included); zingod's earlier input, its own production time, stayed ~0 ms
+  with the bench's CPU saturated. Each decision sets `adaptive_stream_limit`,
+  `adaptive_stream_ceiling` and `adaptive_scheduling_delay_seconds`.
+- **Overload report.** `GrpcService::admission()` → `AdmissionState::overloaded()`, the
+  [overload](#overload) latch, stepped every 10 s (`overload::TICK`).
 - **Trusted proxies.** A peer inside `trusted_proxies` must open with a PROXY header (v1 or v2,
   read under 5 s, ≤ 4 KiB), and the per-client cap counts the address it names; `LOCAL` /
   `UNKNOWN` count the proxy itself.
@@ -177,29 +205,32 @@ stream ending or its client disconnecting). What each `[grpc]` cap bounds:
 - Request bodies are capped before decode ([sizes](../../book/src/wallets/status-codes.md)).
 - **Deadline.** `grpc-timeout` is read at arrival (a malformed value is ignored, as tonic
   ignores it). Past it a pending handler answers `DEADLINE_EXCEEDED` and a stream ends with
-  `DEADLINE_EXCEEDED` trailers; its reads and slot go with it.
+  `DEADLINE_EXCEEDED` trailers; its slot goes with it, a queued read is skipped, and a read
+  already on a thread finishes there (bounded by `read_threads`).
 - **Unread.** A body that handed hyper a frame and is not polled again (flow control stalled on
   a client that stopped reading) owes that frame. Once any stream on a connection has owed for
   `unread_timeout`, the connection is closed. An idle stream (a quiet mempool subscription, a
-  read waiting for its lane) never owes.
-- **Silence.** A handler or stream body with nothing to send for `silent_timeout` ends with
-  `UNAVAILABLE`; the clock restarts at every frame. `GetMempoolStream` is exempt.
+  pending read) never owes.
 - **Frames.** Records ready back to back are joined into DATA chunks of up to 16 KiB, and a
   record of 16 KiB or more passes through uncopied. One small frame per record makes an h2
   0.4.16+ client that reads late answer `GOAWAY too_many_data_frames` (lightwalletd #593).
 - `method` and `code` metric labels come from fixed sets, so a misbehaving client cannot grow
   the series count.
 
-### Read lanes
+### Index reads
 
-`ReadLanes` runs every read that touches index files on the blocking pool, under a permit of its
-lane, never on a runtime worker: **point** (block, tree state, subtree roots), **range** (each
-`GetBlockRange` window below the NFS layer), **scan** (address UTXOs, balances, transactions). A
-heavy scan queues behind the other scans, never behind or ahead of a tip read.
+Every read that touches index files runs on the read pool (`read_pool.rs`): `read_threads`
+threads of its own, oldest read first, never a runtime worker and never tokio's blocking pool.
+That pool belongs to sync's index writes and the `/metrics` scrape, so a wallet surge cannot delay
+the tip or blind monitoring. At most `read_threads` reads are in flight: a read whose request was
+cancelled before a thread took it is skipped, so cancellations cannot stack reads. A read's wait
+for a thread is `read_wait_seconds`; the adaptive limit never sees it (a slow disk fills held
+slots instead, and refusals reach the overload latch). Sizing per device:
+[operators: index reads](../../book/src/operators/dos-protection.md#index-reads).
 
 ### Answered without a read
 
-The answers every synced wallet asks for right after each block never queue:
+The answers every synced wallet asks for right after each block never wait for a read thread:
 
 | Answer | Why it needs no read |
 |---|---|
@@ -212,15 +243,36 @@ The answers every synced wallet asks for right after each block never queue:
 
 The tree-state memos (`memo::PerView`) are keyed on the NFS publish (the `NfsPublication` `Arc`),
 not the `GrpcSnapshot`, which moves on every chain-view fold. A new publish starts empty, so
-there is no invalidation rule. The first ask per publish computes on the point lane,
-single-flight; every later ask is answered inline.
+there is no invalidation rule. The first ask per publish computes on a read thread; concurrent
+asks await that one computation without holding a thread (`tokio::sync::OnceCell`), and every
+later ask is answered inline.
 
 ### Overload
 
-`AdmissionState::overload()` names the first cause latched (`/readyz`: `Overloaded: <cause>`);
-`AdmissionState::set_overload` changes the `[grpc.overload]` thresholds (`OverloadLimits`) live.
-Causes, signals and enter / exit times:
-[operators: overload](../../book/src/operators/maintenance.md#overload).
+`overload.rs`: each 10 s tick's share of connections hurt, smoothed by an EWMA (60 s time
+constant, elapsed-weighted, per cause). Hurt = refused at the adaptive limit (`Wallet` mark: once
+a tick) or held back by a congested uplink (the sampler's latest mean waiting connections, a
+level, as its dumps and the ticks never align). No minimum count: a refusal needs ≥ 128 in
+flight, the network part ≥ 10 senders congested 30 s. Rules:
+[operators: overload](../../book/src/operators/dos-protection.md#overload).
+
+### Uplink sampler
+
+`tcp_info.rs`, one task per listener (spawned beside the accept loop, ends with it): every 10 s a
+`sock_diag` dump of ESTABLISHED sockets on the listener's port, both families, keyed by socket
+cookie (never reused; a 4-tuple is, as NAT ports recycle). A socket first seen counts whole (opened
+since the last dump); the first dump only primes; a closed one drops out.
+
+- waiting = `tcpi_busy_time` minus its receive-window and send-buffer parts
+- floor = the socket's lifetime lowest `min_rtt` (`Seen`: the kernel's windows over
+  `tcp_min_rtt_wlen`, 300 s, and a standing queue lifts it); queue delay = srtt above it
+- waiting reaches the overload latch only once `Window::congested` (≥ 10 sending sockets, median
+  queue delay or retransmitted share over its line) holds unbroken for 30 s (`Congestion`): a full
+  uplink stays congested, slow wallets' own queues flap (bench: ≤ 18 s unbroken)
+
+A trusted proxy's sockets are skipped (their state = the proxy's hop). A refused dump stops the task
+with one warning; serving never depends on it. Rules:
+[operators: uplink](../../book/src/operators/dos-protection.md#uplink).
 
 ### Serving log
 

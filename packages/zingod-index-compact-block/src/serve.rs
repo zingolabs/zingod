@@ -54,7 +54,7 @@ impl<V: SequenceRead> CompactBlockReader<OverlayView<V>> {
 
 /// `GetBlockRange` one chunk at a time, either direction: file window below the seam, layer record
 /// above it
-/// - no `Iterator` impl (the caller routes a disk step to the blocking pool first)
+/// - no `Iterator` impl (the caller routes a disk step to a read thread first)
 /// - `reader` held for the whole stream: durable records, layer and seam frozen
 /// - `next` `None` = spent
 /// - `last` = finalized height served, inclusive
@@ -118,7 +118,7 @@ impl<V: SequenceRead> RangeCursor<V> {
         Ok(Self { reader, budget, pools, descending, next: Some(next), last })
     }
 
-    /// Next chunk reads the files (a cold window faults: the blocking pool's step)
+    /// Next chunk reads the files (a cold window faults: a read thread's step)
     pub fn next_touches_disk(&self) -> bool {
         self.next.is_some_and(|next| Some(next) <= self.reader.durable())
     }

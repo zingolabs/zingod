@@ -14,7 +14,7 @@ use zingod_source::{ChainDataSource, GetTransactionError, QueryError};
 use zingod_traffic::TrafficBalancer;
 
 use super::mempool::unmined;
-use crate::read_lanes::{Lane, ReadLanes};
+use crate::read_pool::ReadPool;
 use crate::wire::{frame, unary_response};
 
 /// `SendTransaction`, answered as lightwalletd does (a rejection = a reply, only unreachable = a
@@ -47,7 +47,7 @@ pub(crate) async fn send_transaction<S: ChainDataSource>(
 pub(crate) async fn get_transaction<S: ChainDataSource, V: PinnedView>(
     validators: &TrafficBalancer<S>,
     grpc_snapshot: &GrpcSnapshot<V>,
-    reads: &ReadLanes,
+    reads: &ReadPool,
     tx_filter: service::TxFilter,
 ) -> Result<Response<Body>, Status> {
     let txid: [u8; 32] = tx_filter
@@ -68,7 +68,7 @@ pub(crate) async fn get_transaction<S: ChainDataSource, V: PinnedView>(
 pub(super) async fn fetch_raw_transaction<S: ChainDataSource, V: PinnedView>(
     validators: &TrafficBalancer<S>,
     grpc_snapshot: &GrpcSnapshot<V>,
-    reads: &ReadLanes,
+    reads: &ReadPool,
     txid: TxId,
 ) -> Result<RawTransaction, Status> {
     let found = validators.lookup(move |source| async move { source.get_transaction(txid).await });
@@ -106,7 +106,7 @@ fn raw_transaction_message(found: zingod_source::TransactionResponse) -> RawTran
 async fn fetch_without_validators<S: ChainDataSource, V: PinnedView>(
     validators: &TrafficBalancer<S>,
     grpc_snapshot: &GrpcSnapshot<V>,
-    reads: &ReadLanes,
+    reads: &ReadPool,
     txid: TxId,
 ) -> Result<Option<RawTransaction>, Status> {
     if let Some(entry) = grpc_snapshot.mempool().ok().and_then(|mempool| mempool.get(&txid)) {
@@ -116,7 +116,7 @@ async fn fetch_without_validators<S: ChainDataSource, V: PinnedView>(
     else {
         return Ok(None);
     };
-    let Some(mined) = reads.read(Lane::Point, move || index.mined(&txid)).await? else {
+    let Some(mined) = reads.read(move || index.mined(&txid)).await? else {
         return Ok(None);
     };
     let Some(raw) = validators.peer_block_bytes(mined.block.hash).await else { return Ok(None) };
@@ -227,7 +227,8 @@ mod tests {
         let ours = [(txid, bytes::Bytes::from(raw.clone()))];
         let held = fixed_snapshots(&chain, tip, Vec::new(), TrustedValidatorSet::at([0]), &ours);
         let held = held.load();
-        let reads = ReadLanes::new(&crate::GrpcLimits::default());
+        let one = std::num::NonZeroUsize::MIN;
+        let reads = crate::read_pool::ReadPool::new(one, one).expect("1 thread each");
 
         let served = fetch_raw_transaction(&routes.validators, &held, &reads, txid).await;
         let unheld = TxId::from_bytes([9; 32]);

@@ -170,7 +170,9 @@ impl Drop for LiveRoutes {
 pub(super) fn dispatch(
     routes: RouteDeps<ZcashLegacyRpcClient, DiskView>,
 ) -> Dispatch<ZcashLegacyRpcClient, DiskView> {
-    let dispatch = Dispatch::new(&crate::GrpcLimits::default());
+    let limits = crate::GrpcLimits::default();
+    let reads = crate::read_pool::ReadPool::new(limits.read_threads, limits.scan_threads);
+    let dispatch = Dispatch::new(reads.expect("test read pool"));
     dispatch.routing().route(routes);
     dispatch
 }

@@ -65,6 +65,7 @@ zstd = "0.14.0"
 tar = "0.4.46"
 sd-notify = "0.5"
 psl = "2.1.252"
+procfs = { version = "0.18", default-features = false }
 
 [dev-dependencies]
 tempfile = { workspace = true }

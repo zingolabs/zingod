@@ -42,15 +42,6 @@ pub(super) enum Command {
     Verify,
     #[command(flatten)]
     Hold(crate::command::hold::Action),
-    /// Override when this node reports `Overloaded`, across restarts: markers in `[serve]
-    /// state_dir`/overload over `[grpc.overload]`, read by the running zingod within a second.
-    ///
-    /// Prints the settings in force. Exits 0 once the marker matches, 1 on an invalid key or
-    /// value, or an unreadable config or state directory.
-    Overload {
-        #[command(subcommand)]
-        action: crate::command::overload::Action,
-    },
     /// Origin policy for browser (gRPC-web) clients, across restarts: markers in `[serve]
     /// state_dir`/origins, read by the running zingod within a second.
     ///
