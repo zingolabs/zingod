@@ -1,6 +1,5 @@
 //! zingod daemon errors
 
-use std::num::NonZeroUsize;
 use std::path::PathBuf;
 
 /// Configuring, booting or running the daemon (`TaskEnded` = a task ended cleanly before any
@@ -11,14 +10,16 @@ pub(crate) enum IndexerError {
     Config(String),
     #[error("writing {}: {source}", path.display())]
     ConfigFile { path: PathBuf, source: std::io::Error },
-    #[error("raising the open-file limit: {0}")]
-    RaiseFdLimit(std::io::Error),
+    #[error("reading or raising the open-file limit: {0}")]
+    OpenFileLimit(std::io::Error),
+    #[error("reading the memory size: {0}")]
+    Memory(String),
     #[error(
-        "grpc.max_connections = {max_connections} needs {needed} open files ({reserved} kept for \
-         indexes and the validator) and the limit is {limit}: raise the hard limit (systemd \
-         LimitNOFILE=, docker --ulimit nofile=) or lower grpc.max_connections"
+        "this host holds {connections} wallet connections ({open_files} open files, {memory_mib} \
+         MiB memory), under 256: raise the hard open-file limit (systemd LimitNOFILE=, docker \
+         --ulimit nofile=) or give zingod more memory"
     )]
-    FdLimit { max_connections: NonZeroUsize, needed: u64, reserved: u64, limit: u64 },
+    TooSmall { open_files: u64, memory_mib: u64, connections: u64 },
     #[error(transparent)]
     ValidatorEndpoint(#[from] zingod_source::EndpointError),
     #[error(transparent)]

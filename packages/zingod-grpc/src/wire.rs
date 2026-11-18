@@ -104,8 +104,11 @@ where
 }
 
 /// `method`'s whole request body, refused past its cap (checked as it arrives, never buffered
-/// beyond) or past [`request_limit::DEADLINE`]
-pub(crate) async fn collect_request<B>(body: B, method: Method) -> Result<bytes::Bytes, Status>
+/// beyond) or past [`request_limit::DEADLINE`] (`None` = an unknown path: the message cap)
+pub(crate) async fn collect_request<B>(
+    body: B,
+    method: Option<Method>,
+) -> Result<bytes::Bytes, Status>
 where
     B: http_body::Body,
     B::Error: fmt::Display,
@@ -113,7 +116,7 @@ where
     use http_body_util::{BodyExt as _, LengthLimitError, Limited};
 
     let limit = match method {
-        Method::SendTransaction => request_limit::TRANSACTION,
+        Some(Method::SendTransaction) => request_limit::TRANSACTION,
         _ => request_limit::MESSAGE,
     };
     let body = body.map_err(|error| Status::internal(format!("reading request body: {error}")));

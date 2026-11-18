@@ -1,182 +1,118 @@
-//! Overload latch per summary window (`summary::INTERVAL`) → readiness
+//! Overload latch: share of wallets hurt, smoothed, over 10 % → readiness `overloaded`, back under 2 %
 //!
-//! - one latch per [`OverloadCause`]: over its threshold for its `enter` → latched, under half of
-//!   it (refusals: under 2 %) for its `exit` → cleared; reported = the first latched
-//! - signals: admission refusals (counted here), CPU / IO pressure (`pressure.rs`)
-//! - operator settings live (`set`): while detection is off the latches still step, none reported
+//! - hurt = refused work (each connection once a tick) or held back by a congested uplink
+//! - each [`TICK`]'s share of its connections, smoothed over [`TIME_CONSTANT`] (an EWMA, as the
+//!   kernel's PSI averages): a trip takes hurt that lasts, never one bad tick
+//! - no minimum count: each input needs a crowd already (refusal = limit ≥ 128 full; network =
+//!   ≥ 10 senders congested 30 s)
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 
 use tracing::{info, warn};
 
-use crate::admission::Class;
 use crate::metrics;
-use crate::OverloadLimits;
 
-/// Refusals: >= ENTER_PERCENT of work (at >= 1 refusal/s) / < EXIT_PERCENT
-const ENTER_PERCENT: u64 = 10;
-const EXIT_PERCENT: u64 = 2;
+pub(crate) const TICK: Duration = Duration::from_secs(10);
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum OverloadCause {
-    CpuPressure,
-    IoPressure,
-    RefusingWork,
+/// 60 s: one tick trips only at ≥ 65 % hurt; 37 % hurt trips in 20 s; release ≈ 2-3 min
+const TIME_CONSTANT: Duration = Duration::from_secs(60);
+
+/// Smoothed share: >= ENTER latches, < EXIT clears (the gap = no flapping)
+const ENTER: f64 = 0.10;
+const EXIT: f64 = 0.02;
+
+/// One connection's mark: the tick it was last counted refused in (+1; 0 = never)
+#[derive(Debug, Default)]
+pub(crate) struct Wallet {
+    refused_in: AtomicU64,
 }
 
-impl OverloadCause {
-    const ALL: [Self; 3] = [Self::CpuPressure, Self::IoPressure, Self::RefusingWork];
-
-    /// Readiness `detail.message`
-    pub const fn detail(self) -> &'static str {
-        match self {
-            Self::CpuPressure => "Overloaded: CPU pressure",
-            Self::IoPressure => "Overloaded: IO pressure",
-            Self::RefusingWork => "Overloaded: refusing work",
-        }
-    }
-
-    /// `zingod_grpc_overload_latched{cause}`
-    pub(crate) const fn label(self) -> &'static str {
-        match self {
-            Self::CpuPressure => "cpu_pressure",
-            Self::IoPressure => "io_pressure",
-            Self::RefusingWork => "refusing_work",
-        }
-    }
-
-    /// (enter, exit)
-    fn rule(self) -> (Duration, Duration) {
-        let minutes = |m: u64| Duration::from_secs(m * 60);
-        match self {
-            Self::CpuPressure | Self::IoPressure => (minutes(2), minutes(3)),
-            // admission already sheds within seconds: only a persistent shortfall counts
-            Self::RefusingWork => (minutes(5), minutes(5)),
-        }
-    }
-}
-
-/// One window's signals (`None` = not measured here)
-#[derive(Clone, Copy, Debug, Default)]
-pub(crate) struct Signals {
-    pub(crate) cpu: Option<f64>,
-    pub(crate) io: Option<f64>,
-}
-
-/// One cause's state (`flipping_for` = how long the opposite condition has held)
-#[derive(Clone, Copy, Debug, Default)]
-struct Latch {
-    held: bool,
-    flipping_for: Duration,
-}
-
-/// `value` against `limit` (0 = off): (over, under half)
-fn against(value: Option<f64>, limit: f64) -> (bool, bool) {
-    match value {
-        Some(value) if limit > 0.0 => (value >= limit, value < limit / 2.0),
-        _ => (false, true),
-    }
-}
-
-#[derive(Debug)]
+/// - `network_milli` = connections held back by a congested uplink now (× 1000; the uplink
+///   sampler's latest dump, a level: its dumps and these ticks never align)
+/// - share of the tick's connections: open at its start (`open_before`) + `opened` in it
+#[derive(Debug, Default)]
 pub(crate) struct Overload {
-    admitted_work: AtomicU64,
-    refused_work: AtomicU64,
-    refused_subscriptions: AtomicU64,
-    closed: Mutex<Closed>,
+    tick: AtomicU64,
+    refused: AtomicU64,
+    network_milli: AtomicU64,
+    open_before: AtomicU64,
+    opened: AtomicU64,
+    smoothed: Mutex<Shares>,
+    latched: AtomicBool,
 }
 
-/// As of the last closed window + the operator's settings
-#[derive(Debug)]
-struct Closed {
-    limits: OverloadLimits,
-    detection: bool,
-    latches: [Latch; OverloadCause::ALL.len()],
+/// Smoothed share hurt, by cause (their sum = the latch's input)
+#[derive(Debug, Default, Clone, Copy)]
+struct Shares {
+    refused: f64,
+    network: f64,
 }
 
 impl Overload {
-    pub(crate) fn new(limits: OverloadLimits) -> Self {
-        let closed = Closed { limits, detection: true, latches: Default::default() };
-        Self {
-            admitted_work: AtomicU64::new(0),
-            refused_work: AtomicU64::new(0),
-            refused_subscriptions: AtomicU64::new(0),
-            closed: Mutex::new(closed),
+    /// Refused work; a wallet counts once per tick however often it is refused
+    pub(crate) fn refused(&self, wallet: &Wallet) {
+        let mark = self.tick.load(Ordering::Relaxed) + 1;
+        if wallet.refused_in.swap(mark, Ordering::Relaxed) != mark {
+            self.refused.fetch_add(1, Ordering::Relaxed);
         }
     }
 
-    pub(crate) fn set(&self, limits: OverloadLimits, detection: bool) {
-        let mut closed = self.closed.lock().expect("overload latch poisoned");
-        (closed.limits, closed.detection) = (limits, detection);
+    /// Mean connections the network holds back now (0 = uplink clear; `tcp_info.rs`)
+    pub(crate) fn network_waiting(&self, connections: f64) {
+        let milli = (connections.max(0.0) * 1000.0) as u64;
+        self.network_milli.store(milli, Ordering::Relaxed);
     }
 
-    pub(crate) fn admitted(&self, class: Class) {
-        if class == Class::Work {
-            self.admitted_work.fetch_add(1, Ordering::Relaxed);
-        }
+    /// A connection accepted (counted into the tick it opens in)
+    pub(crate) fn connected(&self) {
+        self.opened.fetch_add(1, Ordering::Relaxed);
     }
 
-    pub(crate) fn refused(&self, class: Class) {
-        metrics::stream_rejected(class);
-        let refused = match class {
-            Class::Work => &self.refused_work,
-            Class::Subscription => &self.refused_subscriptions,
+    /// Folds the tick (`elapsed` long, `connections` open now) into the smoothed share
+    pub(crate) fn tick(&self, elapsed: Duration, connections: usize) {
+        self.tick.fetch_add(1, Ordering::Relaxed);
+        let refused = self.refused.swap(0, Ordering::Relaxed);
+        let network = self.network_milli.load(Ordering::Relaxed) as f64 / 1000.0;
+        // every connection the tick had (not just those open at its end: refused wallets reconnect)
+        let open_now = u64::try_from(connections).unwrap_or(u64::MAX);
+        let had = self.open_before.swap(open_now, Ordering::Relaxed);
+        let opened = self.opened.swap(0, Ordering::Relaxed);
+        let had = had.saturating_add(opened).max(open_now).max(1) as f64;
+        let instant =
+            Shares { refused: (refused as f64).min(had) / had, network: network.min(had) / had };
+        // elapsed-weighted: a late tick weighs as long as it ran
+        let weight = 1.0 - (-elapsed.as_secs_f64() / TIME_CONSTANT.as_secs_f64()).exp();
+        let shares = {
+            let mut smoothed = self.smoothed.lock().expect("overload shares mutex poisoned");
+            smoothed.refused += weight * (instant.refused - smoothed.refused);
+            smoothed.network += weight * (instant.network - smoothed.network);
+            *smoothed
         };
-        refused.fetch_add(1, Ordering::Relaxed);
-    }
-
-    /// Closes the window (`elapsed` long) on its `signals`: its refusals, every class
-    pub(crate) fn tick(&self, elapsed: Duration, signals: Signals) -> u64 {
-        let take = |counter: &AtomicU64| counter.swap(0, Ordering::Relaxed);
-        let (admitted, refused) = (take(&self.admitted_work), take(&self.refused_work));
-        let attempts = admitted.saturating_add(refused);
-        let percent_of_attempts = |percent: u64| attempts.saturating_mul(percent);
-        let refused_percent = refused.saturating_mul(100);
-        let refusing = refused_percent >= percent_of_attempts(ENTER_PERCENT)
-            && Duration::from_secs(refused) >= elapsed;
-        let quiet = refused == 0 || refused_percent < percent_of_attempts(EXIT_PERCENT);
-
-        let mut closed = self.closed.lock().expect("overload latch poisoned");
-        let limits = &closed.limits;
-        let percent = |p: u8| f64::from(p) / 100.0;
-        let conditions = OverloadCause::ALL.map(|cause| match cause {
-            OverloadCause::CpuPressure => {
-                against(signals.cpu, percent(limits.cpu_pressure_percent))
+        let hurt = shares.refused + shares.network;
+        let was = self.latched.load(Ordering::Relaxed);
+        let now = match was {
+            false => hurt >= ENTER,
+            true => hurt >= EXIT,
+        };
+        self.latched.store(now, Ordering::Relaxed);
+        let percent = |share: f64| (share * 1000.0).round() / 10.0;
+        let (refused_percent, network_percent) = (percent(shares.refused), percent(shares.network));
+        match (was, now) {
+            (false, true) => {
+                warn!(refused_percent, network_percent, connections, "Overload latched")
             }
-            OverloadCause::IoPressure => against(signals.io, percent(limits.io_pressure_percent)),
-            OverloadCause::RefusingWork => (refusing, quiet),
-        });
-        let detection = closed.detection;
-        let causes = OverloadCause::ALL.into_iter().zip(conditions);
-        for ((cause, (over, under)), latch) in causes.zip(&mut closed.latches) {
-            let (enter, exit) = cause.rule();
-            let (flipping, needed) = if latch.held { (under, exit) } else { (over, enter) };
-            latch.flipping_for =
-                if flipping { latch.flipping_for + elapsed } else { Duration::ZERO };
-            if latch.flipping_for >= needed {
-                (latch.held, latch.flipping_for) = (!latch.held, Duration::ZERO);
-                let cause = cause.detail();
-                match latch.held {
-                    true => {
-                        warn!(cause, detection, ?signals, refused, attempts, "Overload latched")
-                    }
-                    false => info!(cause, ?signals, refused, attempts, "Overload cleared"),
-                }
+            (true, false) => {
+                info!(refused_percent, network_percent, connections, "Overload cleared")
             }
-            metrics::overload_latched(cause, latch.held);
+            _ => {}
         }
-
-        refused.saturating_add(take(&self.refused_subscriptions))
+        metrics::overload_shares(shares.refused, shares.network);
     }
 
-    /// The first latched cause (`None` while detection is off)
-    pub(crate) fn cause(&self) -> Option<OverloadCause> {
-        let closed = self.closed.lock().expect("overload latch poisoned");
-        let mut latched = OverloadCause::ALL.into_iter().zip(&closed.latches);
-        let first = latched.find_map(|(cause, latch)| latch.held.then_some(cause));
-        first.filter(|_| closed.detection)
+    pub(crate) fn latched(&self) -> bool {
+        self.latched.load(Ordering::Relaxed)
     }
 }
 
@@ -184,121 +120,81 @@ impl Overload {
 mod tests {
     use super::*;
 
-    const MINUTE: Duration = Duration::from_secs(60);
-
-    /// One minute of `per_second` work admissions, `refused_percent` of them refused → the cause
-    fn refusal_minute(
-        overload: &Overload,
-        per_second: u64,
-        refused_percent: u64,
-    ) -> Option<OverloadCause> {
-        let total = per_second * 60;
-        for _ in 0..total * (100 - refused_percent) / 100 {
-            overload.admitted(Class::Work);
-        }
-        for _ in 0..total * refused_percent / 100 {
-            overload.refused(Class::Work);
-        }
-        overload.tick(MINUTE, Signals::default());
-        overload.cause()
-    }
-
-    /// Enter: >= 10 % refused at >= 1 refusal/s for 5 min; exit: < 2 % for 5 min
+    /// Smoothed over 60 s: hurt that lasts trips it, one bad tick (< 65 %) never; under 2 % = back
     #[test]
-    fn refusing_work_latches_after_five_sustained_minutes_and_clears_after_five_quiet() {
-        let (none, refusing) = (None, Some(OverloadCause::RefusingWork));
-        let latched_5 = [vec![none; 4], vec![refusing]].concat();
-        // case, work admissions/s, % refused each minute, cause after each minute
+    fn the_latch_trips_on_lasting_hurt_over_ten_percent_and_releases_under_two() {
+        // case, runs of ticks: (refused, held by the network, ticks) of 1000 connections,
+        // ticks (1-based) where the latch flips
         #[rustfmt::skip]
         let cases = [
-            ("9 % for 10 min",                100, vec![9; 10],                       vec![none; 10]),
-            ("10 % for 5 min",                100, vec![10; 5],                       latched_5.clone()),
-            ("30 %, one minute at 25 %",      100, vec![30, 30, 25, 30, 30],          latched_5.clone()),
-            ("50 % of 1/s = 0.5 refusals/s",  1,   vec![50; 10],                      vec![none; 10]),
-            ("latched, then 2 % for 5 min",   100, [vec![10; 5], vec![2; 5]].concat(), [latched_5.clone(), vec![refusing; 5]].concat()),
-            ("latched, then 1 % for 5 min",   100, [vec![10; 5], vec![1; 5]].concat(), [latched_5.clone(), vec![refusing; 4], vec![none]].concat()),
+            ("9 % refused, 5 min",             vec![(90, 0, 30)],                  vec![]),
+            ("15 % refused",                   vec![(150, 0, 12)],                 vec![7]),
+            ("one tick 60 %",                  vec![(600, 0, 1), (0, 0, 30)],      vec![]),
+            ("one tick 70 %, then healthy",    vec![(700, 0, 1), (0, 0, 30)],      vec![1, 12]),
+            ("37 % network 1 min, then clear", vec![(0, 370, 6), (0, 0, 20)],      vec![2, 21]),
+            ("6 % refused + 6 % network",      vec![(60, 60, 30)],                 vec![11]),
+            ("tripped, then 5 % holds it",     vec![(1000, 0, 1), (50, 0, 40)],    vec![1]),
         ];
-        for (case, per_second, refused_percent, causes) in cases {
-            let overload = Overload::new(OverloadLimits::default());
+        for (case, runs, want) in cases {
+            let overload = Overload::default();
 
-            let latched: Vec<_> =
-                refused_percent.iter().map(|&p| refusal_minute(&overload, per_second, p)).collect();
-
-            assert_eq!(latched, causes, "{case}: cause after each minute");
-        }
-    }
-
-    #[test]
-    fn a_window_counts_every_refusal_of_every_class() {
-        let overload = Overload::new(OverloadLimits::default());
-        for _ in 0..120 {
-            overload.refused(Class::Work);
-        }
-        overload.refused(Class::Subscription);
-
-        let refused = overload.tick(MINUTE, Signals::default());
-
-        assert_eq!(refused, 121, "120 work + 1 subscription refused");
-        assert_eq!(overload.tick(MINUTE, Signals::default()), 0, "next window starts at zero");
-    }
-
-    /// One minute's pressure shares (`None` = unmeasured)
-    fn signals(cpu: Option<f64>, io: Option<f64>) -> Signals {
-        Signals { cpu, io }
-    }
-
-    /// CPU / IO 25 %: enter over the limit for 2 min, exit under half of it for 3
-    #[test]
-    fn each_pressure_cause_latches_over_its_limit_and_clears_under_half_of_it() {
-        let (none, cpu, io) =
-            (None, Some(OverloadCause::CpuPressure), Some(OverloadCause::IoPressure));
-        let limits = OverloadLimits::default();
-        #[rustfmt::skip]
-        let cases = [
-            ("CPU 30 %; 15 % (not under 12.5) holds; unmeasured 3 min clears",
-                [signals(Some(0.3), None), signals(Some(0.3), None), signals(Some(0.15), None),
-                 signals(None, None), signals(None, None), signals(None, None)],
-                [none, cpu, cpu, cpu, cpu, none]),
-            ("IO 25 % exactly latches; 20 % holds; 10 % for 3 min clears",
-                [signals(None, Some(0.25)), signals(None, Some(0.25)), signals(None, Some(0.2)),
-                 signals(None, Some(0.1)), signals(None, Some(0.1)), signals(None, Some(0.1))],
-                [none, io, io, io, io, none]),
-            ("CPU + IO both latch: CPU named first, then IO",
-                [signals(Some(0.3), Some(0.3)), signals(Some(0.3), Some(0.3)), signals(Some(0.15), Some(0.3)),
-                 signals(Some(0.1), Some(0.3)), signals(Some(0.1), Some(0.3)), signals(Some(0.1), Some(0.3))],
-                [none, cpu, cpu, cpu, cpu, io]),
-        ];
-        for (case, minutes, causes) in cases {
-            let overload = Overload::new(limits.clone());
-
-            let latched = minutes.map(|minute| {
-                overload.tick(MINUTE, minute);
-                overload.cause()
+            let mut flips = Vec::new();
+            let ticks = runs.iter().flat_map(|&(refused, network, ticks)| {
+                std::iter::repeat_n((refused, network), ticks)
             });
+            for (tick, (refused, network)) in (1..).zip(ticks) {
+                let was = overload.latched();
+                for _ in 0..refused {
+                    overload.refused(&Wallet::default());
+                }
+                overload.network_waiting(f64::from(network));
+                overload.tick(TICK, 1_000);
+                if overload.latched() != was {
+                    flips.push(tick);
+                }
+            }
 
-            assert_eq!(latched, causes, "{case}: cause after each minute");
+            assert_eq!(flips, want, "{case}: ticks where the latch flipped");
         }
     }
 
+    /// Wallets refused then reconnecting: the share is of every connection the tick had, ≤ 100 %
     #[test]
-    fn operator_settings_apply_to_a_latched_cause_live() {
-        let cpu = Some(OverloadCause::CpuPressure);
-        let limits = OverloadLimits { cpu_pressure_percent: 25, ..OverloadLimits::default() };
-        let overload = Overload::new(limits.clone());
-        for _ in 0..2 {
-            overload.tick(MINUTE, signals(Some(0.3), None));
+    fn the_share_counts_every_connection_of_the_tick_not_just_those_left_open() {
+        let overload = Overload::default();
+        overload.tick(TICK, 1_000);
+
+        // 1000 open at the start, 2000 more opened, 3000 refused, 900 left open at the end
+        for _ in 0..2_000 {
+            overload.connected();
         }
-        assert_eq!(overload.cause(), cpu, "CPU 30 % for 2 min: latched");
+        for _ in 0..3_000 {
+            overload.refused(&Wallet::default());
+        }
+        overload.tick(TICK, 900);
 
-        overload.set(limits.clone(), false);
-        let detection_off = overload.cause();
-        overload.set(OverloadLimits { cpu_pressure_percent: 0, ..limits }, true);
-        let limit_off = [0; 3].map(|_| {
-            overload.tick(MINUTE, signals(Some(1.0), None));
-            overload.cause()
-        });
+        let smoothed = overload.smoothed.lock().expect("shares").refused;
+        let one_tick = 1.0 - (-1.0f64 / 6.0).exp();
+        assert!((smoothed - one_tick).abs() < 1e-9, "3000 of 3000 hurt = 100 %: {smoothed}");
+        let open_before = overload.open_before.load(Ordering::Relaxed);
+        assert_eq!(open_before, 900, "the next tick starts from those still open");
+    }
 
-        assert_eq!(detection_off, None, "detection off: latched, never reported");
-        assert_eq!(limit_off, [cpu, cpu, None], "CPU limit 0 = off: clears by its 3 min exit");
+    /// One wallet refused all tick = one wallet hurt; counted again in the next tick
+    #[test]
+    fn a_wallet_refused_many_times_counts_once_a_tick() {
+        let overload = Overload::default();
+        let wallet = Wallet::default();
+        let count = |overload: &Overload| overload.refused.load(Ordering::Relaxed);
+
+        for _ in 0..500 {
+            overload.refused(&wallet);
+        }
+        assert_eq!(count(&overload), 1, "500 refusals, one wallet");
+
+        overload.tick(TICK, 20);
+        overload.refused(&wallet);
+        overload.refused(&Wallet::default());
+        assert_eq!(count(&overload), 2, "next tick: the same wallet again + another");
     }
 }

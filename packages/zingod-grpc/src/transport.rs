@@ -5,16 +5,19 @@
 //! - hyper, not `tonic::transport::Server` (own accept loop: over-cap closed before a task
 //!   exists, h2 settings per connection)
 
-use std::net::SocketAddr;
+use std::future::Future;
+use std::net::{IpAddr, SocketAddr};
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 
-use hyper_util::rt::{TokioExecutor, TokioIo, TokioTimer};
+use hyper_util::rt::{TokioIo, TokioTimer};
 use hyper_util::server::conn::auto;
 use hyper_util::service::TowerToHyperService;
 use tokio::io::AsyncReadExt as _;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::time::Instant;
+use tokio_metrics::TaskMonitor;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tower::Layer as _;
@@ -27,12 +30,14 @@ use crate::connections::{ConnectionCaps, Reserved};
 use crate::guard::Guard;
 use crate::health::{Health, HealthRoute};
 use crate::lifetime::{Activity, Retire, RetireReason, Retirement};
-use crate::overload::Signals;
-use crate::pressure::{Pressure, Resource};
+use crate::overload;
 use crate::proxy_protocol;
+use crate::read_pool::ReadPool;
 use crate::service::{Dispatch, Routing};
+use crate::stall::Parked;
 use crate::summary::{self, INTERVAL};
-use crate::{metrics, GrpcLimits};
+use crate::tcp_info;
+use crate::{metrics, GrpcLimits, HostCapacity};
 
 /// Per-stream send buffer (flow control paces from here: a slow wallet backs up itself, not the
 /// server)
@@ -64,11 +69,15 @@ const KEEPALIVE_TIMEOUT: Duration = Duration::from_secs(20);
 /// Locally-reset streams per peer before the connection closes (CVE-2023-44487)
 const RAPID_RESET_LIMIT: usize = 128;
 
+/// lightwalletd's `grpc-max-concurrent-streams` (clients tuned against it)
+const STREAMS_PER_CONNECTION: u32 = 100;
+
 /// `CompactTxStreamer` endpoint: enabled [`RouteDeps`](crate::RouteDeps) on one listener, bounded by [`GrpcLimits`]
 pub struct GrpcService<S: ChainDataSource, V> {
     dispatch: Dispatch<S, V>,
     bind: SocketAddr,
     limits: GrpcLimits,
+    capacity: HostCapacity,
     tls: Option<crate::Tls>,
     admission: Arc<AdmissionState>,
     health: Option<Arc<dyn Health>>,
@@ -82,26 +91,42 @@ pub struct GrpcService<S: ChainDataSource, V> {
 pub enum GrpcServeError {
     #[error("binding the gRPC listener: {0}")]
     Bind(#[source] std::io::Error),
+    #[error("starting {reads} read + {scans} scan threads: {source}")]
+    ReadThreads { reads: NonZeroUsize, scans: NonZeroUsize, source: rayon::ThreadPoolBuildError },
 }
 
 impl<S: ChainDataSource, V: PinnedView> GrpcService<S, V> {
     /// Unrouted: health answered, every method `UNAVAILABLE` until [`Routing::route`]
-    pub fn new(bind: SocketAddr, limits: GrpcLimits) -> Self {
-        let dispatch = Dispatch::new(&limits);
-        let admission = Arc::new(AdmissionState::new(&limits));
+    ///
+    /// - `capacity` = what the host holds (zingod: derived from its fd + memory limits)
+    pub fn new(
+        bind: SocketAddr,
+        limits: GrpcLimits,
+        capacity: HostCapacity,
+    ) -> Result<Self, GrpcServeError> {
+        let (reads, scans) = (limits.read_threads, limits.scan_threads);
+        let reads = ReadPool::new(reads, scans).map_err(|source| GrpcServeError::ReadThreads {
+            reads,
+            scans,
+            source,
+        })?;
+        let dispatch = Dispatch::new(reads);
+        let admission =
+            Arc::new(AdmissionState::new(crate::adaptive::WORK_CEILING, limits.work_share_per_ip));
         let retire = Retire::default();
         let origin_gate = crate::OriginGate::new();
-        Self {
+        Ok(Self {
             dispatch,
             bind,
             limits,
+            capacity,
             tls: None,
             admission,
             health: None,
             retire,
             grpc_web: false,
             origin_gate,
-        }
+        })
     }
 
     /// Serve gRPC-web (browser) clients too: permissive CORS (`*`) on this listener, native
@@ -151,10 +176,24 @@ impl<S: ChainDataSource, V: PinnedView> GrpcService<S, V> {
     }
 }
 
+/// hyper's per-stream tasks, spawned timed (woken → polled: the adaptive limit's input)
+#[derive(Clone, Debug)]
+struct Timed(TaskMonitor);
+
+impl<F> hyper::rt::Executor<F> for Timed
+where
+    F: Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    fn execute(&self, task: F) {
+        tokio::spawn(TaskMonitor::instrument(&self.0, task));
+    }
+}
+
 /// - h2 for gRPC
 /// - HTTP/1.1 only ever reaches the health paths (`health.rs`)
-fn http(limits: &GrpcLimits) -> auto::Builder<TokioExecutor> {
-    let mut builder = auto::Builder::new(TokioExecutor::new());
+fn http(tasks: &TaskMonitor) -> auto::Builder<Timed> {
+    let mut builder = auto::Builder::new(Timed(tasks.clone()));
     builder
         .http1()
         // header read timeout needs a clock (slowloris)
@@ -164,7 +203,7 @@ fn http(limits: &GrpcLimits) -> auto::Builder<TokioExecutor> {
         .http2()
         // keepalive pings need a clock (hyper has none)
         .timer(TokioTimer::new())
-        .max_concurrent_streams(limits.max_streams_per_connection.get())
+        .max_concurrent_streams(STREAMS_PER_CONNECTION)
         .max_send_buf_size(SEND_BUFFER)
         .keep_alive_interval(KEEPALIVE_INTERVAL)
         .keep_alive_timeout(KEEPALIVE_TIMEOUT)
@@ -213,8 +252,9 @@ fn cors(enabled: bool) -> tower_http::cors::CorsLayer {
 /// What every connection task shares
 struct Shared<S: ChainDataSource, V> {
     caps: ConnectionCaps,
+    parked: Arc<Parked>,
     tls: Option<tokio_rustls::TlsAcceptor>,
-    http: auto::Builder<TokioExecutor>,
+    http: auto::Builder<Timed>,
     health: Option<Arc<dyn Health>>,
     retire: Retire,
     dispatch: Dispatch<S, V>,
@@ -258,11 +298,23 @@ impl<S: ChainDataSource, V: PinnedView> BoundGrpcService<S, V> {
         if let Some(tls) = &server.tls {
             tokio::spawn(tls.reload(cancel.clone()).instrument(Span::current()));
         }
-        let (mut cpu, mut io) = (Pressure::new(Resource::Cpu), Pressure::new(Resource::Io));
+        match listener.local_addr() {
+            Ok(bound) => {
+                let proxies = server.limits.trusted_proxies.clone();
+                let admission = Arc::clone(&server.admission);
+                let sampler = tcp_info::sample(bound.port(), proxies, admission, cancel.clone());
+                tokio::spawn(sampler.instrument(Span::current()));
+            }
+            Err(error) => warn!(%error, "Listener address unreadable, link metrics off"),
+        }
         let shared = Arc::new(Shared {
-            caps: ConnectionCaps::new(&server.limits),
+            caps: ConnectionCaps::new(
+                server.capacity.connections,
+                server.limits.max_connections_per_ip,
+            ),
+            parked: Arc::new(Parked::new(server.capacity.parked_bytes)),
             tls: server.tls.as_ref().map(crate::Tls::acceptor),
-            http: http(&server.limits),
+            http: http(server.admission.tasks()),
             health: server.health,
             retire: server.retire,
             dispatch: server.dispatch,
@@ -272,21 +324,33 @@ impl<S: ChainDataSource, V: PinnedView> BoundGrpcService<S, V> {
             origin_gate: server.origin_gate,
             cancel: cancel.clone(),
         });
+        let (parked, admission) = (Arc::clone(&shared.parked), Arc::clone(&shared.admission));
+        let sweep = crate::stall::reclaim_idle(parked, admission, cancel.clone());
+        tokio::spawn(sweep.instrument(Span::current()));
+        let (admission, adapting) = (Arc::clone(&shared.admission), cancel.clone());
+        tokio::spawn(async move { admission.adapt(&adapting).await }.instrument(Span::current()));
         let mut backoff = ACCEPT_BACKOFF_MIN;
-        let mut summaries = tokio::time::interval_at(Instant::now() + INTERVAL, INTERVAL);
-        summaries.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        let mut window_opened = Instant::now();
+        let every = |period| {
+            let mut ticks = tokio::time::interval_at(Instant::now() + period, period);
+            ticks.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            ticks
+        };
+        let (mut summaries, mut overload_ticks) = (every(INTERVAL), every(overload::TICK));
+        let (mut summary_opened, mut overload_opened) = (Instant::now(), Instant::now());
 
         loop {
             let accepted = tokio::select! {
                 _ = cancel.cancelled() => return,
                 accepted = listener.accept() => accepted,
                 now = summaries.tick() => {
-                    let elapsed = now.saturating_duration_since(window_opened);
-                    let signals = Signals { cpu: cpu.share(elapsed), io: io.share(elapsed) };
-                    let at_capacity = shared.admission.tick(elapsed, signals);
-                    summary::summarise(elapsed, shared.caps.held(), at_capacity);
-                    window_opened = now;
+                    summary::summarise(now.saturating_duration_since(summary_opened), shared.caps.held());
+                    summary_opened = now;
+                    continue;
+                }
+                now = overload_ticks.tick() => {
+                    let elapsed = now.saturating_duration_since(overload_opened);
+                    shared.admission.tick(elapsed, shared.caps.held());
+                    overload_opened = now;
                     continue;
                 }
             };
@@ -320,7 +384,8 @@ impl<S: ChainDataSource, V: PinnedView> BoundGrpcService<S, V> {
 
             let retirement = shared.retire.subscribe();
             let connection = Arc::clone(&shared).connection(socket, peer, reserved, retirement);
-            connections.spawn(connection.instrument(Span::current()));
+            let timed = TaskMonitor::instrument(shared.admission.tasks(), connection);
+            connections.spawn(timed.instrument(Span::current()));
         }
     }
 }
@@ -357,7 +422,7 @@ impl<S: ChainDataSource, V: PinnedView> Shared<S, V> {
             let Some(_connection) = self.caps.admit(reserved, peer_ip) else {
                 return;
             };
-            return self.secure(socket, peer, retirement).await;
+            return self.secure(socket, peer, peer_ip, retirement).await;
         }
 
         let header = tokio::time::timeout(
@@ -381,34 +446,39 @@ impl<S: ChainDataSource, V: PinnedView> Shared<S, V> {
         // Bytes past the header = client's HTTP/2 stream: replayed first
         let (reader, writer) = socket.into_split();
         let io = tokio::io::join(std::io::Cursor::new(read_ahead).chain(reader), writer);
-        self.secure(io, peer, retirement).await;
+        self.secure(io, peer, client, retirement).await;
     }
 
     /// TLS handshake when configured (bounded by [`TLS_HANDSHAKE_TIMEOUT`]), then [`Self::serve`]
-    async fn secure<I>(&self, io: I, peer: SocketAddr, retirement: Retirement)
+    ///
+    /// - `client` = the peer, or the address a trusted proxy's PROXY header named
+    async fn secure<I>(&self, io: I, peer: SocketAddr, client: IpAddr, retirement: Retirement)
     where
         I: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
     {
+        // admitted past every connection cap: one of the overload window's connections
+        self.admission.connected();
         let Some(acceptor) = &self.tls else {
-            return self.serve(io, retirement).await;
+            return self.serve(io, client, retirement).await;
         };
         match tokio::time::timeout(TLS_HANDSHAKE_TIMEOUT, acceptor.accept(io)).await {
-            Ok(Ok(stream)) => self.serve(stream, retirement).await,
+            Ok(Ok(stream)) => self.serve(stream, client, retirement).await,
             // scanners and plaintext clients: routine, not an operator signal
             Ok(Err(error)) => debug!(%error, %peer, "TLS handshake failed"),
             Err(_) => debug!(%peer, "TLS handshake timed out"),
         }
     }
 
-    /// Until the peer closes, `cancel` (graceful), or a stream holds unread data past
-    /// `unread_timeout` (dropped: graceful would wait on the very stream that stalled)
+    /// Until the peer closes, `cancel` (graceful), a stream holds unread data past
+    /// `unread_timeout`, or the node's parked budget picks it (both dropped: graceful would wait
+    /// on the very streams that stalled)
     ///
     /// - aged or idle (`lifetime.rs`): GOAWAY, in-flight streams get `max_connection_age_grace`
-    async fn serve<I>(&self, io: I, retirement: Retirement)
+    async fn serve<I>(&self, io: I, client: IpAddr, retirement: Retirement)
     where
         I: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
     {
-        let stalls = Arc::new(crate::stall::Watch::default());
+        let stalls = self.parked.watch(client);
         let activity = Arc::new(Activity::default());
         let admission = Arc::clone(&self.admission);
         let guard = Guard::new(
@@ -440,6 +510,7 @@ impl<S: ChainDataSource, V: PinnedView> Shared<S, V> {
         let retired = tokio::select! {
             _ = serving.as_mut() => return,
             _ = stalls.stalled(limits.unread_timeout) => return metrics::connection_stalled(),
+            () = stalls.evicted() => return,
             _ = self.cancel.cancelled() => {
                 serving.as_mut().graceful_shutdown();
                 let _ = serving.await;
@@ -454,6 +525,7 @@ impl<S: ChainDataSource, V: PinnedView> Shared<S, V> {
         tokio::select! {
             _ = tokio::time::timeout(limits.max_connection_age_grace, serving.as_mut()) => {}
             _ = stalls.stalled(limits.unread_timeout) => metrics::connection_stalled(),
+            () = stalls.evicted() => {}
         }
     }
 }
@@ -478,12 +550,18 @@ mod tests {
     use super::{GrpcServeError, GrpcService};
     use crate::service::{Method, RouteDeps};
     use crate::testing::{fixed_snapshots, indexed, routes_over, routes_serving, MAINNET};
-    use crate::{GrpcLimits, TrustedProxies};
+    use crate::{GrpcLimits, HostCapacity, TrustedProxies};
 
     const ANY_PORT: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0);
 
     /// Real-clock headroom past a deadline (loaded runner: wake-ups + loopback handshakes)
     const SCHEDULING: Duration = Duration::from_secs(1);
+
+    /// Host capacity (zingod derives it from the host; tests never reach it)
+    const CAPACITY: HostCapacity = HostCapacity {
+        connections: NonZeroUsize::new(64).expect("64 is non-zero"),
+        parked_bytes: u64::MAX,
+    };
 
     /// Nothing served, chain view never polled: every `GetLightdInfo` = `UNAVAILABLE`
     fn unserved() -> RouteDeps<ZcashLegacyRpcClient, DiskView> {
@@ -526,7 +604,9 @@ mod tests {
     async fn a_wallet_is_served_and_a_second_connection_from_its_address_is_closed_at_accept() {
         let one = NonZeroUsize::MIN;
         let limits = GrpcLimits { max_connections_per_ip: one, ..GrpcLimits::default() };
-        let server = GrpcService::new(ANY_PORT, limits).with_routes(unserved());
+        let server = GrpcService::new(ANY_PORT, limits, CAPACITY)
+            .expect("read threads start")
+            .with_routes(unserved());
         let bound = server.bind().await.expect("binds");
         let bind = bound.local_addr().expect("bound");
         let cancel = CancellationToken::new();
@@ -560,7 +640,9 @@ mod tests {
             trusted_proxies: TrustedProxies::new(loopback),
             ..GrpcLimits::default()
         };
-        let server = GrpcService::new(ANY_PORT, limits).with_routes(unserved());
+        let server = GrpcService::new(ANY_PORT, limits, CAPACITY)
+            .expect("read threads start")
+            .with_routes(unserved());
         let bound = server.bind().await.expect("binds");
         let bind = bound.local_addr().expect("bound");
         let cancel = CancellationToken::new();
@@ -610,7 +692,9 @@ mod tests {
                 trusted_proxies: TrustedProxies::new(loopback),
                 ..GrpcLimits::default()
             };
-            let server = GrpcService::new(ANY_PORT, limits).with_routes(unserved());
+            let server = GrpcService::new(ANY_PORT, limits, CAPACITY)
+                .expect("read threads start")
+                .with_routes(unserved());
             let bound = server.bind().await.expect("binds");
             let bind = bound.local_addr().expect("bound");
             let cancel = CancellationToken::new();
@@ -658,11 +742,17 @@ mod tests {
         let held = tokio::net::TcpListener::bind(ANY_PORT).await.expect("a free port");
         let bind = held.local_addr().expect("local addr");
 
-        let outcome =
-            GrpcService::new(bind, GrpcLimits::default()).with_routes(unserved()).bind().await;
+        let outcome = GrpcService::new(bind, GrpcLimits::default(), CAPACITY)
+            .expect("read threads start")
+            .with_routes(unserved())
+            .bind()
+            .await;
 
         let error = outcome.err();
-        let kind = error.as_ref().map(|GrpcServeError::Bind(error)| error.kind());
+        let kind = match &error {
+            Some(GrpcServeError::Bind(error)) => Some(error.kind()),
+            _ => None,
+        };
         assert_eq!(kind, Some(std::io::ErrorKind::AddrInUse), "{error:?}");
     }
 
@@ -689,7 +779,9 @@ mod tests {
         let snapshots = fixed_snapshots(&chain, tip, views, TrustedValidatorSet::default(), &[]);
         let routes = routes_serving(MAINNET, &indexes, snapshots);
 
-        let server = GrpcService::new(ANY_PORT, GrpcLimits::default()).with_routes(routes);
+        let server = GrpcService::new(ANY_PORT, GrpcLimits::default(), CAPACITY)
+            .expect("read threads start")
+            .with_routes(routes);
         let bound = server.bind().await.expect("binds");
         let bind = bound.local_addr().expect("bound");
         let cancel = tokio_util::sync::CancellationToken::new();
@@ -738,8 +830,12 @@ mod tests {
         let snapshots =
             fixed_snapshots(&chain, genesis, views, TrustedValidatorSet::default(), &[]);
         let routes = routes_serving(MAINNET, &[IndexKind::TransparentAddress], snapshots);
-        let bound =
-            GrpcService::new(ANY_PORT, limits).with_routes(routes).bind().await.expect("binds");
+        let bound = GrpcService::new(ANY_PORT, limits, CAPACITY)
+            .expect("read threads start")
+            .with_routes(routes)
+            .bind()
+            .await
+            .expect("binds");
         let bind = bound.local_addr().expect("bound");
         tokio::spawn(bound.run(CancellationToken::new()));
         bind
@@ -890,7 +986,8 @@ mod tests {
         let cert = rcgen::generate_simple_self_signed(vec![host.to_owned()]).expect("cert");
         std::fs::write(&files.cert_path, cert.cert.pem()).expect("cert pem");
         std::fs::write(&files.key_path, cert.signing_key.serialize_pem()).expect("key pem");
-        let server = GrpcService::new(ANY_PORT, crate::GrpcLimits::default())
+        let server = GrpcService::new(ANY_PORT, crate::GrpcLimits::default(), CAPACITY)
+            .expect("read threads start")
             .with_tls(crate::Tls::load(files).expect("pair loads"))
             .with_health(Arc::new(Serving));
         let (admission, routing) = (server.admission(), server.routing());
@@ -951,11 +1048,7 @@ mod tests {
 
         let healthy = ("200".to_owned(), r#"{"state":"serving","detail":null}"#.to_owned());
         assert_eq!(readyz().await, healthy, "ALPN http/1.1 /readyz, unrouted");
-        assert_eq!(
-            admission.held(crate::admission::Class::Work),
-            0,
-            "a monitor's /readyz never holds a work slot"
-        );
+        assert_eq!(admission.held(), 0, "a monitor's /readyz never holds a work slot");
         let starting = (Code::Unavailable, crate::service::STARTING.to_owned());
         assert_eq!(lightd_info().await, starting, "ALPN h2 → the gRPC stack, unrouted");
 
@@ -987,7 +1080,8 @@ mod tests {
     /// same listener is untouched by the layer
     #[tokio::test]
     async fn grpc_web_answers_a_preflight_and_still_serves_native_grpc() {
-        let server = GrpcService::new(ANY_PORT, GrpcLimits::default())
+        let server = GrpcService::new(ANY_PORT, GrpcLimits::default(), CAPACITY)
+            .expect("read threads start")
             .with_grpc_web(true)
             .with_routes(unserved());
         let bound = server.bind().await.expect("binds");
@@ -1018,7 +1112,9 @@ mod tests {
     /// gRPC-web off (the default): the same preflight gets no CORS grant, so a browser is refused
     #[tokio::test]
     async fn grpc_web_off_refuses_a_preflight() {
-        let server = GrpcService::new(ANY_PORT, GrpcLimits::default()).with_routes(unserved());
+        let server = GrpcService::new(ANY_PORT, GrpcLimits::default(), CAPACITY)
+            .expect("read threads start")
+            .with_routes(unserved());
         let bound = server.bind().await.expect("binds");
         let bind = bound.local_addr().expect("bound");
         let cancel = CancellationToken::new();

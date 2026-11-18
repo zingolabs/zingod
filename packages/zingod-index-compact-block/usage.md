@@ -102,7 +102,7 @@ mid-stream cannot move the seam between the in-memory layer and the files.
 `next_chunk()` yields either one file window (at most 256 records, cut to
 1 MiB, always at least one) or one layer record. `next_touches_disk()` tells
 the transport whether the next chunk reads files, since only that step belongs
-on the blocking pool. There is no RAM cache for the files; the page cache is
+on a read thread (`zingod-grpc`'s read pool). There is no RAM cache for the files; the page cache is
 the cache.
 
 ### What it does not answer

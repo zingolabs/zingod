@@ -20,7 +20,7 @@ use zingod_sync::IndexKind;
 use super::args;
 use super::info::chain_name;
 use crate::memo::PerView;
-use crate::read_lanes::{Lane, ReadLanes};
+use crate::read_pool::ReadPool;
 use crate::wire::{self, streamed_response, unary_response};
 
 /// Framed answers per NFS publish: the layer heights every synced wallet asks (the tip among
@@ -45,8 +45,8 @@ impl<V> Default for Memos<V> {
 pub(crate) struct TreeStateReads<V> {
     pub(crate) indexed: Arc<NfsPublication<V>>,
     pub(crate) reader: TreeStateReader<OverlayView<V>>,
-    pub(crate) reads: ReadLanes,
     pub(crate) memos: Arc<Memos<V>>,
+    pub(crate) reads: ReadPool,
 }
 
 impl<V: PinnedView> TreeStateReads<V> {
@@ -66,12 +66,12 @@ impl<V: PinnedView> TreeStateReads<V> {
         self.memoized(|memos| &memos.tree_states, height, frame).await?
     }
 
-    /// Framed tree state at `height`, read on the point lane (not memoized)
+    /// Framed tree state at `height`, read on a read thread (not memoized)
     async fn read_tree_state(&self, height: BlockHeight) -> Result<Bytes, Status> {
         let (reader, through, params) =
             (self.reader.clone(), self.served_through(), self.served().params());
         let read = move || framed_tree_state(&reader, height, through, params);
-        self.reads.read(Lane::Point, read).await?
+        self.reads.read(read).await?
     }
 
     /// Framed tree state at `height` only if this index holds `hash` there (a located height can
@@ -91,7 +91,7 @@ impl<V: PinnedView> TreeStateReads<V> {
             }
             Ok(tree_state_message(&tree_state, params))
         };
-        self.reads.read(Lane::Point, read).await?
+        self.reads.read(read).await?
     }
 
     /// Every root of `pool` completed at or below the served tip, framed once per NFS publish
@@ -105,8 +105,8 @@ impl<V: PinnedView> TreeStateReads<V> {
         self.memoized(|memos| &memos.subtree_roots, pool, frame).await
     }
 
-    /// `compute` on first ask per NFS publish, on the point lane (single flight), then the cached
-    /// answer inline
+    /// `compute` on first ask per NFS publish, on a read thread (single flight: the herd awaits it,
+    /// holding no thread), then the cached answer inline
     async fn memoized<K, T>(
         &self,
         memo: fn(&Memos<V>) -> &Memo<V, K, T>,
@@ -120,10 +120,9 @@ impl<V: PinnedView> TreeStateReads<V> {
         if let Some(hit) = memo(&self.memos).cached(&self.indexed, &key) {
             return Ok(hit);
         }
-        let (memos, indexed, reader) =
-            (Arc::clone(&self.memos), Arc::clone(&self.indexed), self.reader.clone());
-        let compute = move || memo(&memos).get_or_compute(&indexed, key, || compute(&reader));
-        self.reads.read(Lane::Point, compute).await
+        let (reads, reader) = (self.reads.clone(), self.reader.clone());
+        let computed = async move { reads.read(move || compute(&reader)).await };
+        memo(&self.memos).get_or_compute(&self.indexed, key, computed).await
     }
 }
 

@@ -12,13 +12,14 @@ use zingod_persistence::{OverlayView, PinnedView};
 use zingod_sync::IndexKind;
 
 use super::args;
-use crate::read_lanes::{Lane, ReadLanes};
+use crate::read_pool::ReadPool;
 use crate::wire::{self, unary_response};
 use zingod_proto::proto::service;
 
 pub(crate) struct CompactBlocks<'a, V> {
     pub(crate) served: &'a IndexesAtBlock<V>,
     pub(crate) reader: CompactBlockReader<OverlayView<V>>,
+    pub(crate) reads: ReadPool,
 }
 
 /// `GetLatestBlock` answers a `BlockID`, not a block: the served tip (no read at all)
@@ -37,14 +38,13 @@ pub(crate) fn get_latest_block<V>(served: &IndexesAtBlock<V>) -> Response<Body> 
 pub(crate) async fn get_block<V: PinnedView>(
     compact_blocks: CompactBlocks<'_, V>,
     block_id: service::BlockId,
-    reads: &ReadLanes,
 ) -> Result<Response<Body>, Status> {
     let block = if block_id.hash.is_empty() {
         let height = args::height(block_id.height, "height")?;
-        compact_blocks.read_by_height(height, reads).await?
+        compact_blocks.read_by_height(height).await?
     } else {
         let (height, hash) = compact_blocks.locate(&block_id.hash, "GetBlock")?;
-        compact_blocks.read_by_hash(height, hash, reads).await?
+        compact_blocks.read_by_hash(height, hash).await?
     };
     Ok(unary_response(block))
 }
@@ -53,11 +53,10 @@ pub(crate) async fn get_block<V: PinnedView>(
 pub(crate) fn get_block_range<V: PinnedView>(
     compact_blocks: CompactBlocks<'_, V>,
     range: service::BlockRange,
-    reads: ReadLanes,
 ) -> Result<Response<Body>, Status> {
     let pools = args::pools(&range.pool_types)?;
     let blocks = compact_blocks.open_range(&range, pools)?;
-    Ok(blocks.into_response(reads, std::convert::identity))
+    Ok(blocks.into_response(std::convert::identity))
 }
 
 impl<V: PinnedView> CompactBlocks<'_, V> {
@@ -71,8 +70,8 @@ impl<V: PinnedView> CompactBlocks<'_, V> {
         args::locate(self.served, self.served_through(), hash, method)
     }
 
-    /// NFS layer (pepper-sync's reorg check at the tip) = RAM, answered inline; else the point lane
-    async fn read_by_height(self, height: BlockHeight, reads: &ReadLanes) -> Result<Bytes, Status> {
+    /// NFS layer (pepper-sync's reorg check at the tip) = RAM, answered inline; else a read thread
+    async fn read_by_height(self, height: BlockHeight) -> Result<Bytes, Status> {
         if height > self.served_through() {
             return Err(serve_error_status(ServeError::NotFound { height }));
         }
@@ -84,21 +83,16 @@ impl<V: PinnedView> CompactBlocks<'_, V> {
             let held = reader.block(height);
             held.unwrap_or_else(|| panic!("compact-block view holds {height} <= answers_through"))
         };
-        reads.read(Lane::Point, read).await
+        self.reads.read(read).await
     }
 
     /// Only where this index holds that same block (a located height can lag a reorg)
-    async fn read_by_hash(
-        self,
-        height: BlockHeight,
-        hash: [u8; 32],
-        reads: &ReadLanes,
-    ) -> Result<Bytes, Status> {
+    async fn read_by_hash(self, height: BlockHeight, hash: [u8; 32]) -> Result<Bytes, Status> {
         let reader = self.reader;
         let read = move || {
             reader.block_at(height, &zcash_protocol::BlockHash(hash)).map_err(serve_error_status)
         };
-        reads.read(Lane::Point, read).await?
+        self.reads.read(read).await?
     }
 
     /// Walk order up to the first height past [`Self::served_through`]
@@ -129,7 +123,7 @@ impl<V: PinnedView> CompactBlocks<'_, V> {
         let cursor = RangeCursor::new(self.reader, start, end, through, pools)
             .expect("compact-block view's tip >= answers_through >= start");
 
-        Ok(BlockStream { cursor, past_tip })
+        Ok(BlockStream { cursor, past_tip, reads: self.reads })
     }
 }
 
@@ -141,18 +135,15 @@ impl<V: PinnedView> CompactBlocks<'_, V> {
 pub(super) struct BlockStream<V> {
     cursor: RangeCursor<V>,
     past_tip: Option<Status>,
+    reads: ReadPool,
 }
 
 impl<V: PinnedView> BlockStream<V> {
     /// Server-streaming response, cursor chunk by chunk
     ///
     /// - `reproject` = per-chunk rewrite (`identity` for `GetBlockRange`: records stay slices)
-    pub(super) fn into_response(
-        self,
-        reads: ReadLanes,
-        reproject: fn(Bytes) -> Bytes,
-    ) -> Response<Body> {
-        let BlockStream { cursor, past_tip } = self;
+    pub(super) fn into_response(self, reproject: fn(Bytes) -> Bytes) -> Response<Body> {
+        let BlockStream { cursor, past_tip, reads } = self;
         let chunks =
             futures::stream::try_unfold((cursor, reads), move |(cursor, reads)| async move {
                 let (cursor, chunk) = next_chunk(cursor, &reads).await?;
@@ -165,19 +156,19 @@ impl<V: PinnedView> BlockStream<V> {
 
 /// Cursor's next chunk (`None` = spent)
 ///
-/// - disk step = blocking pool, range lane per step not per request (cold mmap refill ~11.7 ms
-///   would stall the worker; layer reads never queue)
+/// - disk step = a read thread, per step not per request (cold mmap refill ~11.7 ms would stall
+///   the worker; layer reads never queue)
 /// - in-memory step = inline (else a task per block on the highest-volume RPC)
 async fn next_chunk<V: PinnedView>(
     mut cursor: RangeCursor<V>,
-    reads: &ReadLanes,
+    reads: &ReadPool,
 ) -> Result<(RangeCursor<V>, Option<Bytes>), Status> {
     if !cursor.next_touches_disk() {
         let chunk = cursor.next_chunk();
         return Ok((cursor, chunk));
     }
     reads
-        .read(Lane::Range, move || {
+        .read(move || {
             let chunk = cursor.next_chunk();
             (cursor, chunk)
         })

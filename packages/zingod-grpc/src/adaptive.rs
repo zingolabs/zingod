@@ -1,96 +1,86 @@
-//! Adaptive work-stream limit: Netflix concurrency-limits' Gradient2 over server time per message
+//! Adaptive work-stream limit: Netflix concurrency-limits' Gradient2 over sustained CPU queueing
 //!
-//! - sample = time the server spent producing one message (admission → first DATA frame, then
-//!   each poll → the next)
-//! - client backpressure never counts (hyper stops polling)
-//! - per window: `limit × clamp(TOLERANCE × long / short, 0.5, 1) + √limit`, smoothed, in
-//!   `floor..=ceiling` (`max_work_streams`)
-//! - window whose peak in flight < limit / 2 = app-limited: no change (a quiet node never inflates)
-//! - refusal unchanged: `UNAVAILABLE` + pushback (`admission.rs`)
+//! - [`WORK_CEILING`] until the CPU falls behind; the limit = a shed, never a guess at capacity
+//! - sample = the gRPC tasks' scheduling delay: woken (ready) → polled, i.e. waiting for a core
+//!   (`tokio_metrics::TaskMonitor`); a task waiting on a disk read, a client or the network is
+//!   not ready, so none of those count (shedding cannot speed them up)
+//! - decision = median of 10 windows, so a block rush (≤ 2 s) moves ≤ 4 of them
+//! - rules + their measured basis: `usage.md` "Serve stack", adaptive limit
 
-use std::sync::atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering::Relaxed};
+use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 use std::sync::Mutex;
 use std::time::Duration;
 
-use tokio::time::Instant;
+use tokio::time::MissedTickBehavior;
+use tokio_metrics::TaskMonitor;
+use tokio_util::sync::CancellationToken;
+use tracing::{info, warn};
+
+use crate::metrics;
 
 /// Fixed-point scale of the estimated limit and the gradient (integer Gradient2)
-const MILLI: usize = 1000;
+const MILLI: u64 = 1000;
 
-/// Short-term RTT may reach this × the long-term baseline before the limit shrinks (‰)
-const TOLERANCE_MILLI: u64 = 1500;
+/// Median scheduling delay over this = the CPU is falling behind
+/// - bench (2 cores, 12k wallets): delay 7 → 158 ms with load; never shedding failed 6k sessions
+///   (tip p99 1.2 s), a 20 ms budget 21k (refusals end syncs): shed only where waits hurt
+const BUDGET: Duration = Duration::from_millis(100);
 
-/// Gradient bounds (‰)
-const GRADIENT_MILLI: std::ops::RangeInclusive<u64> = 500..=1000;
+/// Decisions over budget in a row before the first shrink (15 s: a rush never lasts it)
+const SUSTAIN: u32 = 3;
 
-/// Weight of each window's new limit = 1 / SMOOTHING_PARTS
-const SMOOTHING_PARTS: usize = 5;
+/// Largest single shrink (‰ of the limit), then smoothed: weight of a step = 1 / SMOOTHING_PARTS
+const MIN_GRADIENT_MILLI: u64 = 500;
+const SMOOTHING_PARTS: u64 = 5;
 
-/// Windows the long-term RTT averages over (5 min at [`WINDOW`])
-const LONG_WINDOWS: u64 = 600;
+/// Healthy decision → limit × this (‰): floor to ceiling in ~2.5 min
+const GROWTH_MILLI: u64 = 1100;
 
-/// A window closes once both this long and [`WINDOW_SAMPLES`] in
+/// One window = this long, counted once ≥ [`WINDOW_WAKES`] (an idle node decides nothing); a
+/// decision = [`DECISION_WINDOWS`] of them
 const WINDOW: Duration = Duration::from_millis(500);
-const WINDOW_SAMPLES: u32 = 10;
+const WINDOW_WAKES: u64 = 10;
+const DECISION_WINDOWS: usize = 10;
 
-/// Lowest adaptive limit (clamped to the ceiling)
-const FLOOR: usize = 32;
+/// Lowest limit while shedding (clamped to the ceiling)
+const FLOOR: usize = 128;
 
-/// Starting limit (clamped to `FLOOR..=ceiling`): growth needs load, so a cold start admits a burst
-const INITIAL: usize = 256;
+/// Limit while the CPU keeps up (a full disk fills it → refusals → overload: the disk's signal)
+pub(crate) const WORK_CEILING: usize = 2048;
 
-/// `adaptive` off = the limit stays the ceiling
-///
-/// - `sample` = relaxed atomics only; the one sample that closes a window takes `gradient`
+/// The limit, moved only by [`Limiter::window`]'s decisions
 #[derive(Debug)]
 pub(crate) struct Limiter {
     limit: AtomicUsize,
     floor: usize,
     ceiling: usize,
-    adaptive: bool,
-    window: OpenWindow,
     gradient: Mutex<Gradient>,
 }
 
-/// Samples since the last close (`opened_us` = that close, since `epoch`)
-///
-/// - a sample racing the close may land in either window (±1 of ≥ [`WINDOW_SAMPLES`])
-#[derive(Debug)]
-struct OpenWindow {
-    epoch: Instant,
-    opened_us: AtomicU64,
-    sum_us: AtomicU64,
-    samples: AtomicU32,
-    peak: AtomicUsize,
-}
-
-/// `long_ns` = baseline RTT (`None` before the first window)
+/// `windows` = this decision's window delays; `over` = decisions over budget in a row
 #[derive(Debug)]
 struct Gradient {
-    estimated_milli: usize,
-    long_ns: Option<u64>,
+    estimated_milli: u64,
+    windows: Vec<u64>,
+    over: u32,
+}
+
+/// One decision's outcome (its limit + the median delay it weighed)
+struct Decision {
+    limit: u64,
+    delay_ns: u64,
 }
 
 impl Limiter {
-    pub(crate) fn new(ceiling: usize, adaptive: bool) -> Self {
-        let floor = FLOOR.min(ceiling);
-        let initial = if adaptive { INITIAL.clamp(floor, ceiling) } else { ceiling };
-        let window = OpenWindow {
-            epoch: Instant::now(),
-            opened_us: AtomicU64::new(0),
-            sum_us: AtomicU64::new(0),
-            samples: AtomicU32::new(0),
-            peak: AtomicUsize::new(0),
-        };
+    pub(crate) fn new(ceiling: usize) -> Self {
         Self {
-            limit: AtomicUsize::new(initial),
-            floor,
+            limit: AtomicUsize::new(ceiling),
+            floor: FLOOR.min(ceiling),
             ceiling,
-            adaptive,
-            window,
             gradient: Mutex::new(Gradient {
-                estimated_milli: initial.saturating_mul(MILLI),
-                long_ns: None,
+                estimated_milli: wide(ceiling).saturating_mul(MILLI),
+                windows: Vec::with_capacity(DECISION_WINDOWS),
+                over: 0,
             }),
         }
     }
@@ -99,63 +89,76 @@ impl Limiter {
         self.limit.load(Relaxed)
     }
 
-    /// One message's production time, `in_flight` work streams as it landed
-    pub(crate) fn sample(&self, took: Duration, in_flight: usize) {
-        if !self.adaptive {
-            return;
+    /// Until `cancel`: every [`WINDOW`], `tasks`' mean scheduling delay (idle windows skipped)
+    pub(crate) async fn follow(&self, tasks: &TaskMonitor, cancel: &CancellationToken) {
+        let mut intervals = tasks.intervals();
+        let mut ticks = tokio::time::interval(WINDOW);
+        ticks.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        loop {
+            tokio::select! {
+                _ = cancel.cancelled() => return,
+                _ = ticks.tick() => {}
+            }
+            let Some(window) = intervals.next() else { return };
+            if window.total_scheduled_count >= WINDOW_WAKES {
+                self.window(window.mean_scheduled_duration());
+            }
         }
-        let window = &self.window;
-        let micros = |duration: Duration| u64::try_from(duration.as_micros()).unwrap_or(u64::MAX);
-        window.sum_us.fetch_add(micros(took), Relaxed);
-        let samples = window.samples.fetch_add(1, Relaxed) + 1;
-        window.peak.fetch_max(in_flight, Relaxed);
-        let (now, opened) = (micros(window.epoch.elapsed()), window.opened_us.load(Relaxed));
-        // saturating: a racing closer may have stamped a later `now` than ours
-        if now.saturating_sub(opened) < micros(WINDOW) || samples < WINDOW_SAMPLES {
-            return;
-        }
-        // one closer per window
-        if window.opened_us.compare_exchange(opened, now, Relaxed, Relaxed).is_err() {
-            return;
-        }
-        let sum_ns = window.sum_us.swap(0, Relaxed).saturating_mul(1000);
-        let (samples, peak) = (window.samples.swap(0, Relaxed), window.peak.swap(0, Relaxed));
+    }
+
+    /// One window's mean scheduling delay; every [`DECISION_WINDOWS`]th decides
+    fn window(&self, delay: Duration) {
+        let delay_ns = u64::try_from(delay.as_nanos()).unwrap_or(u64::MAX);
         let mut gradient = self.gradient.lock().expect("adaptive limiter poisoned");
-        let limit =
-            gradient.update(sum_ns / u64::from(samples.max(1)), peak, self.floor, self.ceiling);
-        self.limit.store(limit, Relaxed);
+        let range =
+            wide(self.floor).saturating_mul(MILLI)..=wide(self.ceiling).saturating_mul(MILLI);
+        if let Some(decided) = gradient.window(delay_ns, range) {
+            let limit = usize::try_from(decided.limit).expect("limit <= ceiling, a usize");
+            let was = self.limit.swap(limit, Relaxed);
+            let delay = Duration::from_nanos(decided.delay_ns);
+            let cpu_wait_ms = delay.as_millis();
+            match (was == self.ceiling, limit == self.ceiling) {
+                (true, false) => warn!(limit, cpu_wait_ms, "Work limit lowered"),
+                (false, true) => info!(limit, cpu_wait_ms, "Work limit restored"),
+                _ => {}
+            }
+            metrics::adaptive_decided(limit, self.ceiling, delay);
+        }
     }
 }
 
+fn wide(value: usize) -> u64 {
+    u64::try_from(value).expect("usize fits u64")
+}
+
 impl Gradient {
-    /// Gradient2's update, one closed window (`short_ns` = its mean RTT, `peak` = most in flight)
-    fn update(&mut self, short_ns: u64, peak: usize, floor: usize, ceiling: usize) -> usize {
-        // a zero-time window carries no signal (and would divide by zero)
-        let short = short_ns.max(1);
-        let long = self.long_ns.get_or_insert(short);
-        match short >= *long {
-            true => *long += (short - *long) / LONG_WINDOWS,
-            false => *long -= (*long - short) / LONG_WINDOWS,
+    /// One window's delay; every [`DECISION_WINDOWS`]th decides (`range` = floor..=ceiling, ‰)
+    fn window(&mut self, delay_ns: u64, range: std::ops::RangeInclusive<u64>) -> Option<Decision> {
+        self.windows.push(delay_ns);
+        if self.windows.len() < DECISION_WINDOWS {
+            return None;
         }
-        // load gone: the baseline follows the faster RTT down
-        if *long > short.saturating_mul(2) {
-            *long -= *long / 20;
-        }
+        // upper median: ≥ 6 of 10 windows slow before a decision is
+        let (_, &mut median, _) = self.windows.select_nth_unstable(DECISION_WINDOWS / 2);
+        self.windows.clear();
+        let delay = median.max(1);
+        let budget = u64::try_from(BUDGET.as_nanos()).expect("budget fits u64");
+        let over = delay > budget;
+        self.over = if over { self.over.saturating_add(1) } else { 0 };
         let estimated = self.estimated_milli;
-        if peak.saturating_mul(2 * MILLI) < estimated {
-            return estimated / MILLI;
-        }
-        let gradient = TOLERANCE_MILLI.saturating_mul(*long) / short;
-        let gradient = gradient.clamp(*GRADIENT_MILLI.start(), *GRADIENT_MILLI.end());
-        let gradient = usize::from(u16::try_from(gradient).expect("clamped to <= 1000"));
-        // √(e / MILLI) × MILLI = √(e × MILLI)
-        let next =
-            estimated.saturating_mul(gradient) / MILLI + estimated.saturating_mul(MILLI).isqrt();
-        let smoothed =
-            estimated.saturating_mul(SMOOTHING_PARTS - 1).saturating_add(next) / SMOOTHING_PARTS;
-        self.estimated_milli =
-            smoothed.clamp(floor.saturating_mul(MILLI), ceiling.saturating_mul(MILLI));
-        self.estimated_milli / MILLI
+        let next = match over {
+            false => estimated.saturating_mul(GROWTH_MILLI) / MILLI,
+            true if self.over < SUSTAIN => estimated,
+            true => {
+                // how far over the budget = how hard to shrink (at most halved, smoothed 1/5)
+                let gradient =
+                    (budget.saturating_mul(MILLI) / delay).clamp(MIN_GRADIENT_MILLI, MILLI);
+                let shrunk = estimated.saturating_mul(gradient) / MILLI;
+                (estimated.saturating_mul(SMOOTHING_PARTS - 1) + shrunk) / SMOOTHING_PARTS
+            }
+        };
+        self.estimated_milli = next.clamp(*range.start(), *range.end());
+        Some(Decision { limit: self.estimated_milli / MILLI, delay_ns: delay })
     }
 }
 
@@ -164,71 +167,61 @@ mod tests {
     use super::*;
 
     const CEILING: usize = 2048;
-    /// In flight past any limit here: every window loaded
-    const LOADED: usize = 2 * CEILING;
+    const QUICK: Duration = Duration::from_micros(200);
+    const SLOW: Duration = Duration::from_millis(300);
 
-    /// `count` windows passed (paused clock), each filled with `rtt` samples at `in_flight`: the
-    /// limit after each
-    async fn windows(limiter: &Limiter, count: usize, rtt_ms: u64, in_flight: usize) -> Vec<usize> {
-        let mut limits = Vec::with_capacity(count);
-        for _ in 0..count {
-            tokio::time::advance(WINDOW).await;
-            for _ in 0..WINDOW_SAMPLES {
-                limiter.sample(Duration::from_millis(rtt_ms), in_flight);
-            }
-            limits.push(limiter.limit());
+    /// `count` windows, each at `delay`: the limit after each
+    fn windows(limiter: &Limiter, count: usize, delay: Duration) -> Vec<usize> {
+        (0..count)
+            .map(|_| {
+                limiter.window(delay);
+                limiter.limit()
+            })
+            .collect()
+    }
+
+    /// A node's day of block rushes: 2 s at 300 ms (3× the budget), every 75 s, for 30 min
+    #[test]
+    fn block_rushes_never_move_the_limit_off_its_ceiling() {
+        let limiter = Limiter::new(CEILING);
+        let mut seen = Vec::new();
+
+        for _ in 0..24 {
+            seen.extend(windows(&limiter, 4, SLOW));
+            seen.extend(windows(&limiter, 146, QUICK));
         }
-        limits
+
+        assert!(seen.iter().all(|&limit| limit == CEILING), "a rush shed work: {seen:?}");
     }
 
-    /// ≈ +√limit / 5 per window
-    #[tokio::test(start_paused = true)]
-    async fn a_loaded_limiter_at_a_steady_rtt_grows_from_initial() {
-        let limiter = Limiter::new(CEILING, true);
-        assert_eq!(limiter.limit(), INITIAL, "cold start");
+    /// 200 µs, then 300 ms sustained (3× the 100 ms budget), then back
+    #[test]
+    fn sustained_cpu_queueing_sheds_after_fifteen_seconds_to_the_floor_and_recovery_regrows() {
+        let limiter = Limiter::new(CEILING);
+        windows(&limiter, 60, QUICK);
 
-        let grown = windows(&limiter, 20, 10, LOADED).await;
+        let first_two_decisions = windows(&limiter, 20, SLOW);
+        let third = windows(&limiter, 10, SLOW);
+        let sustained = windows(&limiter, 400, SLOW);
+        let recovered = windows(&limiter, 400, QUICK);
 
-        let shrank = grown.windows(2).find(|pair| pair[1] < pair[0]);
-        assert_eq!(shrank, None, "steady 10 ms RTT never shrinks: {grown:?}");
-        let last = *grown.last().expect("20 windows");
-        assert!(last > INITIAL + 40, "20 windows from {INITIAL}: {grown:?}");
+        let (shed, settled) = (third[9], *sustained.last().expect("400 windows"));
+        assert!(first_two_decisions.iter().all(|&limit| limit == CEILING), "10 s: no shed yet");
+        // halving (gradient floor 0.5) smoothed 1/5: × 0.9
+        assert_eq!(shed, CEILING * 9 / 10, "15 s: one smoothed step");
+        assert_eq!(settled, FLOOR, "sustained 3× the budget: down to the floor");
+        assert!(sustained.iter().all(|&limit| limit >= FLOOR), "never under the floor");
+        assert_eq!(recovered.last(), Some(&CEILING), "200 s back at 200 µs: the ceiling again");
     }
 
-    /// Baseline 10 ms; floor = `FLOOR`
-    #[tokio::test(start_paused = true)]
-    async fn rtt_past_the_tolerance_shrinks_the_limit_to_the_floor_and_recovery_grows_it() {
-        let limiter = Limiter::new(CEILING, true);
-        let before = *windows(&limiter, 20, 10, LOADED).await.last().expect("20 windows");
+    /// Any delay up to the budget, sustained: never a shed
+    #[test]
+    fn queueing_up_to_the_budget_never_sheds() {
+        let limiter = Limiter::new(CEILING);
 
-        let shrunk = windows(&limiter, 10, 40, LOADED).await;
-        let floored = windows(&limiter, 200, 400, LOADED).await;
-        let recovered = windows(&limiter, 20, 10, LOADED).await;
+        let busy = windows(&limiter, 600, Duration::from_millis(50));
+        let at_budget = windows(&limiter, 600, BUDGET);
 
-        let after = *shrunk.last().expect("10 windows");
-        assert!(after < before / 2, "5 s at 4× the RTT: {before} → {shrunk:?}");
-        assert_eq!(floored.last(), Some(&FLOOR), "100 s at 40× the RTT");
-        let regrown = *recovered.last().expect("20 windows");
-        assert!(regrown > FLOOR, "RTT back to 10 ms: grows from {FLOOR}: {recovered:?}");
-    }
-
-    /// Peak in flight < limit / 2: a quiet node never inflates or deflates
-    #[tokio::test(start_paused = true)]
-    async fn an_app_limited_limiter_holds_its_limit_as_rtt_rises() {
-        let limiter = Limiter::new(CEILING, true);
-        let quiet = windows(&limiter, 1, 10, 1).await;
-
-        let slow = windows(&limiter, 20, 400, 1).await;
-
-        assert_eq!(slow, vec![quiet[0]; 20], "1 in flight under {}", quiet[0]);
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn a_fixed_limiter_stays_at_its_ceiling() {
-        let fixed = Limiter::new(CEILING, false);
-
-        let limits = windows(&fixed, 20, 400, LOADED).await;
-
-        assert_eq!(limits, vec![CEILING; 20], "adaptive off, 40× RTT under load");
+        assert!(busy.iter().chain(&at_budget).all(|&limit| limit == CEILING), "{busy:?}");
     }
 }
