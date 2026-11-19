@@ -157,9 +157,9 @@ stall-watch ticket and its close-out metrics, so all three end when hyper drops 
   is `405`, any other path over HTTP/1.x `404` — forwarded to the gRPC-web stack instead when
   `with_grpc_web(true)` (browser gRPC-web and its CORS preflight ride HTTP/1.1).
 - **Browser gRPC-web** (`with_grpc_web(true)`): `tower-http` CORS (`*`, grpc-status / grpc-message
-  exposed) answers the preflight, `tonic-web` translates gRPC-web framing; native gRPC is
-  untouched (CORS short-circuits only an `OPTIONS` preflight). Off = no CORS, so a browser is
-  refused. Per-origin policy is the gate below.
+  / `grpc-retry-pushback-ms` exposed) answers the preflight, `tonic-web` translates gRPC-web
+  framing; native gRPC is untouched (CORS short-circuits only an `OPTIONS` preflight). Off = no
+  CORS, so a browser is refused. Per-origin policy is the gate below.
 - **Origin gate** (`with_origin_gate(Arc<OriginGate>)`, read in `guard.rs`): a request's `Origin`
   → `block` (`PermissionDenied` before admission), else the normal admission path; `allow` only
   carves a host out of a blocked parent, never lifts a cap (`Origin` is client-settable). A

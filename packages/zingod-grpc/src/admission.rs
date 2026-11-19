@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use http::{HeaderValue, Response};
+use http::{HeaderName, HeaderValue, Response};
 use tokio_metrics::TaskMonitor;
 use tokio_util::sync::CancellationToken;
 use tonic::Status;
@@ -28,8 +28,11 @@ use crate::stall::Client;
 /// Refusal retry hint, ms (held streams = wallet syncs: a slot frees well under a second)
 const PUSHBACK_MS: &str = "250";
 
-/// gRPC's own "come back later" header (grpc-core)
-const PUSHBACK_HEADER: &str = "grpc-retry-pushback-ms";
+/// gRPC headers a refusal carries (status by tonic, pushback = grpc-core's "come back later")
+pub(crate) const STATUS_HEADER: HeaderName = HeaderName::from_static("grpc-status");
+pub(crate) const MESSAGE_HEADER: HeaderName = HeaderName::from_static("grpc-message");
+pub(crate) const DETAILS_HEADER: HeaderName = HeaderName::from_static("grpc-status-details-bin");
+pub(crate) const PUSHBACK_HEADER: HeaderName = HeaderName::from_static("grpc-retry-pushback-ms");
 
 /// Work streams holding a slot, the adaptive limit and its outcomes, shared by every connection
 /// ([`GrpcService::admission`](crate::GrpcService::admission) = its readiness view)

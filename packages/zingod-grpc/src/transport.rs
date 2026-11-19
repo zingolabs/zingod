@@ -25,7 +25,9 @@ use tracing::{debug, info, warn, Instrument as _, Span};
 use zingod_persistence::PinnedView;
 use zingod_source::ChainDataSource;
 
-use crate::admission::AdmissionState;
+use crate::admission::{
+    AdmissionState, DETAILS_HEADER, MESSAGE_HEADER, PUSHBACK_HEADER, STATUS_HEADER,
+};
 use crate::connections::{ConnectionCaps, Reserved};
 use crate::guard::{Guard, Protocol};
 use crate::health::{Health, HealthRoute};
@@ -231,7 +233,7 @@ impl<S: ChainDataSource, V: PinnedView> GrpcService<S, V> {
 /// `Access-Control-Allow-Origin` and is refused; native and non-browser clients unaffected)
 ///
 /// - `*` origin + `Any` headers (public endpoint; the `Origin` gate does the refusing, not CORS)
-/// - grpc-status / grpc-message exposed (browser reads a gRPC trailer off the body)
+/// - grpc-status / grpc-message / retry pushback exposed
 fn cors(enabled: bool) -> tower_http::cors::CorsLayer {
     use tower_http::cors::{Any, CorsLayer};
     if !enabled {
@@ -241,11 +243,7 @@ fn cors(enabled: bool) -> tower_http::cors::CorsLayer {
         .allow_origin(Any)
         .allow_methods(Any)
         .allow_headers(Any)
-        .expose_headers([
-            http::header::HeaderName::from_static("grpc-status"),
-            http::header::HeaderName::from_static("grpc-message"),
-            http::header::HeaderName::from_static("grpc-status-details-bin"),
-        ])
+        .expose_headers([STATUS_HEADER, MESSAGE_HEADER, DETAILS_HEADER, PUSHBACK_HEADER])
         .max_age(Duration::from_secs(3600))
 }
 
@@ -1125,6 +1123,11 @@ mod tests {
             .expect("read");
         let response = String::from_utf8_lossy(&response).to_ascii_lowercase();
         assert!(response.contains("grpc-status: 14"), "gRPC-web answered UNAVAILABLE:\n{response}");
+        assert!(
+            response.lines().any(|line| line.starts_with("access-control-expose-headers:")
+                && line.contains("grpc-retry-pushback-ms")),
+            "refusal pushback readable by a browser:\n{response}",
+        );
 
         cancel.cancel();
         serving.await.expect("the serve task ran");
