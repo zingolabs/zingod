@@ -5502,7 +5502,7 @@ dependencies = [
 
 [[package]]
 name = "zingod"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "bytes",
  "clap",
@@ -5555,7 +5555,7 @@ dependencies = [
 
 [[package]]
 name = "zingod-chainview"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "arc-swap",
  "bytes",
@@ -5581,7 +5581,7 @@ dependencies = [
 
 [[package]]
 name = "zingod-grpc"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "arc-swap",
  "aws-lc-rs",
@@ -5640,7 +5640,7 @@ dependencies = [
 
 [[package]]
 name = "zingod-grpc-snapshot"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "arc-swap",
  "bytes",
@@ -5667,7 +5667,7 @@ dependencies = [
 
 [[package]]
 name = "zingod-header-chain"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "const-hex",
  "equihash",
@@ -5683,7 +5683,7 @@ dependencies = [
 
 [[package]]
 name = "zingod-index-compact-block"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "bytes",
  "proptest",
@@ -5700,7 +5700,7 @@ dependencies = [
 
 [[package]]
 name = "zingod-index-transparent-address"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "proptest",
  "thiserror 2.0.18",
@@ -5716,7 +5716,7 @@ dependencies = [
 
 [[package]]
 name = "zingod-index-tree-state"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "incrementalmerkletree",
  "orchard",
@@ -5735,7 +5735,7 @@ dependencies = [
 
 [[package]]
 name = "zingod-index-utxo-set"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "thiserror 2.0.18",
  "tokio",
@@ -5749,7 +5749,7 @@ dependencies = [
 
 [[package]]
 name = "zingod-internal-block-hash-to-height"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "tokio",
  "zcash_protocol",
@@ -5761,7 +5761,7 @@ dependencies = [
 
 [[package]]
 name = "zingod-internal-txid-location"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "tokio",
  "zcash_protocol",
@@ -5773,7 +5773,7 @@ dependencies = [
 
 [[package]]
 name = "zingod-nfs"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "imbl",
  "metrics",
@@ -5799,7 +5799,7 @@ dependencies = [
 
 [[package]]
 name = "zingod-peers"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "chrono",
  "metrics",
@@ -5820,7 +5820,7 @@ dependencies = [
 
 [[package]]
 name = "zingod-persistence"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "bytes",
  "crc32fast",
@@ -5844,7 +5844,7 @@ dependencies = [
 
 [[package]]
 name = "zingod-primitives"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "metrics",
  "serde",
@@ -5859,7 +5859,7 @@ dependencies = [
 
 [[package]]
 name = "zingod-proto"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "prost",
  "serde",
@@ -5870,7 +5870,7 @@ dependencies = [
 
 [[package]]
 name = "zingod-source"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "const-hex",
  "futures",
@@ -5903,7 +5903,7 @@ dependencies = [
 
 [[package]]
 name = "zingod-sync"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "futures",
  "metrics",
@@ -5923,7 +5923,7 @@ dependencies = [
 
 [[package]]
 name = "zingod-traffic"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "futures",
  "metrics",

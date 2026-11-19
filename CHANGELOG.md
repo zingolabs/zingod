@@ -7,6 +7,69 @@ files merged since the last one ([RELEASING.md](./RELEASING.md)).
 Before 1.0.0 the project was Zaino, versioned per crate at
 [zingolabs/zaino](https://github.com/zingolabs/zaino): that history is in each crate's
 `CHANGELOG.md` as of its tag `zainod-0.10.2`.
+## 1.2.0 (2026-11-19)
+
+### Features
+
+#### zingod-grpc, zingod: one adaptive work limit, a load-balancer overload signal, no hardware knobs
+
+- Work limit (2048) sheds only when the CPU falls behind (ready requests wait > 100 ms for a core,
+  15 s); disk, wallet and network waits never count. Linux PSI signals gone
+- `/readyz` `down`, reason `overloaded`, while > 10% of wallets are refused or held back by a
+  congested uplink (60 s average; clears under 2%). Serving continues
+- Connections and memory limits come from the host (`Connection cap` at startup; under 256,
+  zingod refuses to start)
+- Per address (an IPv6 /64 = one): `[grpc] work_share_per_ip` of the work limit, default
+  `0.0625` (`1.0` = none, for load tests)
+- Requests take a work slot only once their body has arrived; streams whose wallet stops reading
+  give theirs up when slots run short
+- Index reads on zingod's own threads: `[grpc] read_threads` (32), address-history scans apart in
+  `[grpc] scan_threads` (4)
+- Remove from your config, or zingod refuses to start: `[grpc.overload]`, and under `[grpc]`
+  `max_connections`, `max_streams_per_connection`, `max_work_streams`, `adaptive_work_streams`,
+  `max_subscriptions`, `max_point_reads`, `max_range_reads`, `max_scan_reads`,
+  `silent_timeout_secs`
+- `zingod overload` removed; delete `<state_dir>/overload/` if it exists
+- Metrics:
+  - gone: `zingod_grpc_overload_latched` (use `zingod_state_reason{reason="overloaded"}`),
+    `zingod_grpc_active_subscriptions`, `zingod_grpc_subscriptions_rejected_total`
+  - renamed: `zingod_grpc_disk_read_wait_seconds{lane}` → `zingod_grpc_read_wait_seconds{pool}`
+  - new: `zingod_grpc_overload_share{cause}`, `zingod_grpc_adaptive_stream_ceiling`,
+    `zingod_grpc_adaptive_scheduling_delay_seconds`, `zingod_grpc_parked_bytes`,
+    `zingod_grpc_parked_evicted_total`, `zingod_grpc_uplink_*`;
+    `zingod_grpc_admission_rejected_total` gains `reason`
+- Logs: `Serving` = `rps`, `conns`, `refused`, `failed`, `evicted`; new `Work limit lowered` /
+  `restored`, `Uplink congested` / `clear`, `Overload latched` / `cleared`
+
+#### zingod-grpc: gRPC-web traffic by protocol and origin
+
+`zingod_grpc_requests_total` gains a `protocol` label (`grpc`, `grpc_web`). Once a minute, an
+`Origin requests` log line names each of the 10 busiest browser origins with its request count
+and verdict; one with `origin="(other)"` sums the rest.
+
+#### Serve browser (gRPC-web) clients with an operator origin policy
+
+`[serve] grpc_web = true` serves browser wallets over gRPC-web on the gRPC listener: permissive
+CORS answers their preflight, native gRPC is untouched. Off by default, so existing deployments
+are unchanged.
+
+`zingod origin block|allow|reset <domain>` (and bare `zingod origin` to list) manage per-origin
+policy from markers under `<state_dir>/origins`, picked up by a running zingod within a second,
+no restart. `block` refuses an origin and its subdomains (`PermissionDenied`), `allow` carves a
+subdomain back out (most-specific marker wins); every unblocked origin meets the same limits as
+any client.
+Browser load by verdict is the `zingod_grpc_origin_requests_total` metric.
+
+### Fixes
+
+#### Documentation moves to a book at zingolabs.github.io/zingod
+
+All documentation outside the crates now lives in one book, with a part each for wallet
+developers (connecting, each method's answers, status codes, the protocol files), operators
+(quick start, configuration, first sync, monitoring, maintenance, network exposure, Docker,
+migrating from Zaino) and contributors (architecture, testing). The `docs/` directory is gone;
+the example configs are in `book/src/operators/`.
+
 ## 1.1.0 (2026-11-09)
 
 ### Features
